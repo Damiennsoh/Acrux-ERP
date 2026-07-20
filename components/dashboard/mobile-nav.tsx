@@ -39,8 +39,8 @@ const WHITE_55 = 'rgba(255,255,255,0.55)';
 const WHITE_18 = 'rgba(255,255,255,0.18)';
 const WHITE_10 = 'rgba(255,255,255,0.10)';
 const WHITE_08 = 'rgba(255,255,255,0.08)';
-const GREEN_LIGHT = 'rgba(187,247,208,0.9)';
-const GREEN_LIGHT_70 = 'rgba(187,247,208,0.7)';
+const BLUE_LIGHT = 'rgba(147,197,253,0.9)';
+const BLUE_LIGHT_70 = 'rgba(147,197,253,0.7)';
 
 interface MobileNavProps {
   user: any;
@@ -123,14 +123,14 @@ export function MobileNav({ user }: MobileNavProps) {
         left: 0,
         right: 0,
         zIndex: 50,
-        background: '#14532d',
+        background: '#1e3a8a',
         borderTop: '1px solid rgba(255,255,255,0.08)',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '4rem', padding: '0 1rem' }}>
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <p style={{ fontFamily: FONT, fontSize: '0.85rem', fontWeight: 700, color: WHITE, margin: 0 }}>{user?.name}</p>
-          <span style={{ color: GREEN_LIGHT, display: 'flex', alignItems: 'center' }}>
+          <span style={{ color: BLUE_LIGHT, display: 'flex', alignItems: 'center' }}>
             {isOnline ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
           </span>
         </div>
@@ -147,7 +147,7 @@ export function MobileNav({ user }: MobileNavProps) {
             side="right"
             className="w-[300px] p-0 flex flex-col"
             style={{
-              background: 'linear-gradient(180deg, #14532d 0%, #166534 40%, #15803d 100%)',
+              background: 'linear-gradient(180deg, #1e3a8a 0%, #2563eb 40%, #3b82f6 100%)',
               borderLeft: '1px solid rgba(255,255,255,0.08)',
             }}
           >
@@ -156,7 +156,7 @@ export function MobileNav({ user }: MobileNavProps) {
                 <div style={{ width: 32, height: 32, borderRadius: 8, background: WHITE_18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <Zap className="w-5 h-5" style={{ color: WHITE }} />
                 </div>
-                FinManage Pro
+                ACRUX ERP
               </SheetTitle>
             </SheetHeader>
 
@@ -164,13 +164,13 @@ export function MobileNav({ user }: MobileNavProps) {
               {/* User card */}
               <div style={{ marginBottom: '1.25rem', background: WHITE_08, padding: '0.75rem', borderRadius: '0.5rem' }}>
                 <p style={{ fontFamily: FONT, fontSize: '0.85rem', fontWeight: 700, color: WHITE, margin: 0 }}>{user?.name}</p>
-                <p style={{ fontFamily: FONT, fontSize: '0.72rem', fontWeight: 500, color: GREEN_LIGHT_70, margin: 0 }}>{user?.staffId}</p>
+                <p style={{ fontFamily: FONT, fontSize: '0.72rem', fontWeight: 500, color: BLUE_LIGHT_70, margin: 0 }}>{user?.staffId}</p>
                 {isAdmin && (
-                  <p style={{ fontFamily: FONT, fontSize: '0.68rem', fontWeight: 700, color: '#86efac', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <p style={{ fontFamily: FONT, fontSize: '0.68rem', fontWeight: 700, color: '#60a5fa', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
                     <Shield className="w-3 h-3" /> Administrator
                   </p>
                 )}
-                <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 4, fontFamily: FONT, fontSize: '0.65rem', fontWeight: 600, color: GREEN_LIGHT_70 }}>
+                <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 4, fontFamily: FONT, fontSize: '0.65rem', fontWeight: 600, color: BLUE_LIGHT_70 }}>
                   {isOnline ? <><Wifi className="w-3 h-3" /> Online</> : <><WifiOff className="w-3 h-3" /> Offline Mode</>}
                 </div>
               </div>
@@ -179,10 +179,10 @@ export function MobileNav({ user }: MobileNavProps) {
               <NavItem tab="projects" icon={<FolderKanban className="w-4 h-4" />} label="Project Info" />
 
               <div style={{ padding: '0.75rem 0.5rem 0.3rem', fontFamily: FONT, fontSize: '0.6rem', fontWeight: 700, color: WHITE_55, textTransform: 'uppercase', letterSpacing: '0.12em' }}>Costs</div>
-              <NavItem tab="materials" icon={<Hammer className="w-4 h-4" />} label="Materials" />
-              <NavItem tab="labor" icon={<UsersRound className="w-4 h-4" />} label="Labor" />
+              <NavItem tab="development-tools" icon={<Hammer className="w-4 h-4" />} label="Development Tools" />
+              <NavItem tab="development-costs" icon={<UsersRound className="w-4 h-4" />} label="Development Costs" />
               <NavItem tab="broker" icon={<Briefcase className="w-4 h-4" />} label="Broker Payments" />
-              <NavItem tab="petty" icon={<Wallet className="w-4 h-4" />} label="Petty Cash" />
+              <NavItem tab="miscellaneous" icon={<Wallet className="w-4 h-4" />} label="Miscellaneous" />
 
               <div style={{ padding: '0.75rem 0.5rem 0.3rem', fontFamily: FONT, fontSize: '0.6rem', fontWeight: 700, color: WHITE_55, textTransform: 'uppercase', letterSpacing: '0.12em' }}>Income & Reports</div>
               <NavItem tab="revenue" icon={<TrendingUp className="w-4 h-4" />} label="Revenue" />

@@ -145,7 +145,7 @@ export class HybridSyncEngine {
     if (!navigator.onLine) return;
     
     const db = await getDB();
-    const collections = ['projects', 'expenses', 'revenue', 'materials', 'labor', 'broker_payments', 'petty_cash', 'user_profiles', 'organizations', 'audit_logs'];
+    const collections = ['projects', 'expenses', 'revenue', 'development_tools', 'development_costs', 'broker_payments', 'miscellaneous', 'user_profiles', 'organizations', 'audit_logs'];
 
     for (const table of collections) {
       try {
@@ -361,7 +361,7 @@ export async function deleteDocWithSync(
  */
 export async function deleteProjectWithCascade(projectId: string, userId: string) {
   const db = await getDB();
-  const collectionsToClean = ['expenses', 'revenue', 'materials', 'labor', 'petty_cash', 'broker_payments'];
+  const collectionsToClean = ['expenses', 'revenue', 'development_tools', 'development_costs', 'miscellaneous', 'broker_payments'];
 
   // 1. Delete the Project itself
   await deleteDocWithSync('projects', projectId, userId);

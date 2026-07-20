@@ -11,14 +11,14 @@ export interface CurrencyConfig {
 }
 
 export const currencies: Record<string, CurrencyConfig> = {
-  LRD: { code: 'LRD', symbol: 'L$', name: 'Liberian Dollar' },
   USD: { code: 'USD', symbol: '$', name: 'US Dollar' },
   EUR: { code: 'EUR', symbol: '€', name: 'Euro' },
   GBP: { code: 'GBP', symbol: '£', name: 'British Pound' },
+  GHS: { code: 'GHS', symbol: '₵', name: 'Ghanaian Cedi' },
+  ZWL: { code: 'ZWL', symbol: 'Z$', name: 'Zimbabwean Dollar' },
   CAD: { code: 'CAD', symbol: 'C$', name: 'Canadian Dollar' },
   AUD: { code: 'AUD', symbol: 'A$', name: 'Australian Dollar' },
   NGN: { code: 'NGN', symbol: '₦', name: 'Nigerian Naira' },
-  GHS: { code: 'GHS', symbol: '₵', name: 'Ghanaian Cedi' },
   XOF: { code: 'XOF', symbol: 'CFA', name: 'West African CFA' },
 };
 
@@ -33,7 +33,7 @@ const CurrencyContext = createContext<CurrencyContextType | undefined>(undefined
 
 export function CurrencyProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  const [currency, setCurrencyState] = useState('LRD');
+  const [currency, setCurrencyState] = useState('USD');
 
   // Load saved currency from localStorage OR cloud user metadata
   useEffect(() => {
@@ -76,12 +76,12 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
     
     // Special formatting for different currencies
     switch (currency) {
-      case 'LRD':
-        return `L$${amount.toLocaleString()}`;
       case 'NGN':
         return `₦${amount.toLocaleString()}`;
       case 'GHS':
         return `₵${amount.toLocaleString()}`;
+      case 'ZWL':
+        return `Z$${amount.toLocaleString()}`;
       case 'XOF':
         return `${amount.toLocaleString()} CFA`;
       case 'EUR':

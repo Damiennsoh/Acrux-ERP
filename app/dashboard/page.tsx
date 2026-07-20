@@ -12,10 +12,10 @@ import { PWAInstall } from '@/components/pwa-install';
 import { useAuth } from '@/lib/auth-context';
 import { Zap } from 'lucide-react';
 
-import { MaterialsTab } from '@/components/dashboard/tabs/materials-tab';
-import { LaborTab } from '@/components/dashboard/tabs/labor-tab';
+import { DevelopmentToolsTab } from '@/components/dashboard/tabs/development-tools-tab';
+import { DevelopmentCostsTab } from '@/components/dashboard/tabs/development-costs-tab';
 import { BrokerTab } from '@/components/dashboard/tabs/broker-tab';
-import { PettyCashTab } from '@/components/dashboard/tabs/petty-cash-tab';
+import { MiscellaneousTab } from '@/components/dashboard/tabs/miscellaneous-tab';
 import { AuditLogTab } from '@/components/dashboard/tabs/audit-log-tab';
 
 // Wrapper to handle useSearchParams safely
@@ -28,15 +28,15 @@ function DashboardContent() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Mobile Top Header (only visible on mobile) */}
-      <header className="sm:hidden sticky top-0 z-40 border-b border-green-800 shadow-sm" style={{ background: 'linear-gradient(90deg, #14532d, #166534)' }}>
+      <header className="sm:hidden sticky top-0 z-40 border-b border-blue-800 shadow-sm" style={{ background: 'linear-gradient(90deg, #1e3a8a, #2563eb)' }}>
         <div className="flex h-16 items-center justify-between px-4 gap-4">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg flex items-center justify-center shadow-md" style={{ background: 'rgba(255,255,255,0.18)' }}>
               <Zap className="w-4 h-4 text-white" />
             </div>
             <div>
-              <h1 className="text-base font-bold text-white" style={{ fontFamily: "'Outfit', 'Inter', sans-serif" }}>GLP FinManage</h1>
-              <p className="text-[10px] text-green-200" style={{ fontFamily: "'Inter', sans-serif" }}>Green Land Power Inc.</p>
+              <h1 className="text-base font-bold text-white" style={{ fontFamily: "'Outfit', 'Inter', sans-serif" }}>ACRUX ERP</h1>
+              <p className="text-[10px] text-blue-200" style={{ fontFamily: "'Inter', sans-serif" }}>ACRUX IT SOLUTIONS</p>
             </div>
           </div>
         </div>
@@ -55,20 +55,20 @@ function DashboardContent() {
             <ProjectsTab />
           </TabsContent>
 
-          <TabsContent value="materials" className="space-y-4 m-0 border-none p-0 outline-none">
-            <MaterialsTab />
+          <TabsContent value="development-tools" className="space-y-4 m-0 border-none p-0 outline-none">
+            <DevelopmentToolsTab />
           </TabsContent>
           
-          <TabsContent value="labor" className="space-y-4 m-0 border-none p-0 outline-none">
-            <LaborTab />
+          <TabsContent value="development-costs" className="space-y-4 m-0 border-none p-0 outline-none">
+            <DevelopmentCostsTab />
           </TabsContent>
           
           <TabsContent value="broker" className="space-y-4 m-0 border-none p-0 outline-none">
             <BrokerTab />
           </TabsContent>
           
-          <TabsContent value="petty" className="space-y-4 m-0 border-none p-0 outline-none">
-            <PettyCashTab />
+          <TabsContent value="miscellaneous" className="space-y-4 m-0 border-none p-0 outline-none">
+            <MiscellaneousTab />
           </TabsContent>
 
           <TabsContent value="revenue" className="space-y-4 m-0 border-none p-0 outline-none">

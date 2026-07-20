@@ -29,7 +29,7 @@ import { toast } from 'sonner';
 const FONT_FAMILY = "'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif";
 const FONT_HEADING = "'Outfit', 'Inter', 'Segoe UI', sans-serif";
 
-const SIDEBAR_BG = 'linear-gradient(180deg, #14532d 0%, #166534 40%, #15803d 100%)';
+const SIDEBAR_BG = 'linear-gradient(180deg, #1e3a8a 0%, #2563eb 40%, #3b82f6 100%)';
 const WHITE = '#ffffff';
 const WHITE_78 = 'rgba(255,255,255,0.78)';
 const WHITE_55 = 'rgba(255,255,255,0.55)';
@@ -37,9 +37,9 @@ const WHITE_18 = 'rgba(255,255,255,0.18)';
 const WHITE_12 = 'rgba(255,255,255,0.12)';
 const WHITE_10 = 'rgba(255,255,255,0.10)';
 const WHITE_08 = 'rgba(255,255,255,0.08)';
-const GREEN_LIGHT = 'rgba(187, 247, 208, 0.9)';
-const GREEN_LIGHT_70 = 'rgba(187, 247, 208, 0.7)';
-const GREEN_BADGE = '#86efac';
+const BLUE_LIGHT = 'rgba(147, 197, 253, 0.9)';
+const BLUE_LIGHT_70 = 'rgba(147, 197, 253, 0.7)';
+const BLUE_BADGE = '#60a5fa';
 
 interface SidebarProps {
   user: any;
@@ -112,7 +112,7 @@ export function Sidebar({ user }: SidebarProps) {
               padding: '2px',
             }}
           >
-            <img src="/GLP-LOGO.jpeg" alt="GLP Logo" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '0.4rem' }} />
+            <img src="/Acrux-LOGO.png" alt="ACRUX Logo" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '0.4rem' }} />
           </div>
           <div>
             <h2
@@ -126,20 +126,20 @@ export function Sidebar({ user }: SidebarProps) {
                 margin: 0,
               }}
             >
-              FinManage Pro
+              ACRUX ERP
             </h2>
             <p
               style={{
                 fontFamily: FONT_FAMILY,
                 fontWeight: 500,
                 fontSize: '0.7rem',
-                color: GREEN_LIGHT,
+                color: BLUE_LIGHT,
                 letterSpacing: '0.02em',
                 marginTop: '2px',
                 margin: 0,
               }}
             >
-              Green Land Power Inc.
+              ACRUX IT SOLUTIONS
             </p>
           </div>
         </div>
@@ -158,10 +158,10 @@ export function Sidebar({ user }: SidebarProps) {
         <NavLink href="/dashboard?tab=projects" icon={<FolderKanban className="w-4 h-4" />} label="Project Info" isActive={activeTab === 'projects'} />
 
         <SectionLabel text="Costs" />
-        <NavLink href="/dashboard?tab=materials" icon={<Hammer className="w-4 h-4" />} label="Materials" isActive={activeTab === 'materials'} />
-        <NavLink href="/dashboard?tab=labor" icon={<UsersRound className="w-4 h-4" />} label="Labor" isActive={activeTab === 'labor'} />
+        <NavLink href="/dashboard?tab=development-tools" icon={<Hammer className="w-4 h-4" />} label="Development Tools" isActive={activeTab === 'development-tools'} />
+        <NavLink href="/dashboard?tab=development-costs" icon={<UsersRound className="w-4 h-4" />} label="Development Costs" isActive={activeTab === 'development-costs'} />
         <NavLink href="/dashboard?tab=broker" icon={<Briefcase className="w-4 h-4" />} label="Broker Payments" isActive={activeTab === 'broker'} />
-        <NavLink href="/dashboard?tab=petty" icon={<Wallet className="w-4 h-4" />} label="Petty Cash" isActive={activeTab === 'petty'} />
+        <NavLink href="/dashboard?tab=miscellaneous" icon={<Wallet className="w-4 h-4" />} label="Miscellaneous" isActive={activeTab === 'miscellaneous'} />
 
         <SectionLabel text="Income & Reports" />
         <NavLink href="/dashboard?tab=revenue" icon={<TrendingUp className="w-4 h-4" />} label="Revenue" isActive={activeTab === 'revenue'} />
@@ -197,7 +197,7 @@ export function Sidebar({ user }: SidebarProps) {
             fontFamily: FONT_FAMILY,
             fontSize: '0.7rem',
             fontWeight: 600,
-            color: GREEN_LIGHT,
+            color: BLUE_LIGHT,
             padding: '0.25rem 0.6rem',
             borderRadius: '999px',
             background: WHITE_08,
@@ -222,7 +222,7 @@ export function Sidebar({ user }: SidebarProps) {
           <p style={{ fontFamily: FONT_FAMILY, fontSize: '0.85rem', fontWeight: 700, color: WHITE, margin: 0 }}>
             {user?.name}
           </p>
-          <p style={{ fontFamily: FONT_FAMILY, fontSize: '0.72rem', fontWeight: 500, color: GREEN_LIGHT_70, margin: 0 }}>
+          <p style={{ fontFamily: FONT_FAMILY, fontSize: '0.72rem', fontWeight: 500, color: BLUE_LIGHT_70, margin: 0 }}>
             {user?.staffId}
           </p>
           {isAdmin && (
@@ -231,7 +231,7 @@ export function Sidebar({ user }: SidebarProps) {
                 fontFamily: FONT_FAMILY,
                 fontSize: '0.68rem',
                 fontWeight: 700,
-                color: GREEN_BADGE,
+                color: BLUE_BADGE,
                 marginTop: '0.2rem',
                 display: 'flex',
                 alignItems: 'center',

@@ -28,10 +28,10 @@ import {
 export function SummaryTab() {
   const { formatCurrency, currencyConfig, currency } = useCurrency();
   // Fetch all collections
-  const { data: materials, isLoading: i1 } = useCollection('materials');
-  const { data: labor, isLoading: i2 } = useCollection('labor');
+  const { data: development_tools, isLoading: i1 } = useCollection('development_tools');
+  const { data: development_costs, isLoading: i2 } = useCollection('development_costs');
   const { data: brokers, isLoading: i3 } = useCollection('broker_payments');
-  const { data: pettyCash, isLoading: i4 } = useCollection('petty_cash');
+  const { data: miscellaneous, isLoading: i4 } = useCollection('miscellaneous');
   const { data: revenue, isLoading: i5 } = useCollection('revenue');
   const { data: projects, isLoading: i6 } = useCollection('projects');
 
@@ -50,7 +50,7 @@ export function SummaryTab() {
   // --------------------------------------------------------------------------
   const calculateMultiCurrencyTotals = (items: any[], amountField: string = 'amount') => {
     return items.reduce((acc: Record<string, number>, item) => {
-      const currency = item.currency || 'LRD'; // Fallback to LRD for Green Land Power
+      const currency = item.currency || 'USD'; // Fallback to USD for ACRUX
       const amount = Number(item[amountField]) || 0;
       acc[currency] = (acc[currency] || 0) + amount;
       return acc;
@@ -58,39 +58,39 @@ export function SummaryTab() {
   };
 
   // Grouped totals by currency
-  const materialsByCurrency = calculateMultiCurrencyTotals(materials || [], 'totalCost');
-  const laborByCurrency = calculateMultiCurrencyTotals(labor || [], 'payment');
+  const developmentToolsByCurrency = calculateMultiCurrencyTotals(development_tools || [], 'totalCost');
+  const developmentCostsByCurrency = calculateMultiCurrencyTotals(development_costs || [], 'cost');
   const brokerByCurrency = calculateMultiCurrencyTotals(brokers || [], 'amount');
-  const pettyCashByCurrency = calculateMultiCurrencyTotals(pettyCash || [], 'amount');
+  const miscellaneousByCurrency = calculateMultiCurrencyTotals(miscellaneous || [], 'amount');
   const revenueByCurrency = calculateMultiCurrencyTotals(revenue || [], 'amount');
 
   // Unified expense aggregator
   const currencies = Array.from(new Set([
-    ...Object.keys(materialsByCurrency),
-    ...Object.keys(laborByCurrency),
+    ...Object.keys(developmentToolsByCurrency),
+    ...Object.keys(developmentCostsByCurrency),
     ...Object.keys(brokerByCurrency),
-    ...Object.keys(pettyCashByCurrency),
+    ...Object.keys(miscellaneousByCurrency),
     ...Object.keys(revenueByCurrency)
   ]));
 
   const expensesByCurrency: Record<string, number> = {};
   currencies.forEach(curr => {
     expensesByCurrency[curr] = 
-      (materialsByCurrency[curr] || 0) + 
-      (laborByCurrency[curr] || 0) + 
+      (developmentToolsByCurrency[curr] || 0) + 
+      (developmentCostsByCurrency[curr] || 0) + 
       (brokerByCurrency[curr] || 0) + 
-      (pettyCashByCurrency[curr] || 0);
+      (miscellaneousByCurrency[curr] || 0);
   });
 
   // For charts and single-value displays, we still use the default currency's value or a specific sum
   // if mixed, but the UI should primarily show the breakdown.
   const mainCurrency = currency; // Correct property from useCurrency()
-  const totalMaterials = materialsByCurrency[mainCurrency] || 0;
-  const totalLabor = laborByCurrency[mainCurrency] || 0;
+  const totalDevelopmentTools = developmentToolsByCurrency[mainCurrency] || 0;
+  const totalDevelopmentCosts = developmentCostsByCurrency[mainCurrency] || 0;
   const totalBroker = brokerByCurrency[mainCurrency] || 0;
-  const totalPetty = pettyCashByCurrency[mainCurrency] || 0;
+  const totalMiscellaneous = miscellaneousByCurrency[mainCurrency] || 0;
 
-  const totalCost = totalMaterials + totalLabor + totalBroker + totalPetty;
+  const totalCost = totalDevelopmentTools + totalDevelopmentCosts + totalBroker + totalMiscellaneous;
   const totalBudget = (projects || []).reduce((sum, p) => sum + (p.budget || 0), 0);
   const totalRevenue = totalBudget - totalCost; 
   const totalReceived = revenueByCurrency[mainCurrency] || 0;
@@ -101,10 +101,10 @@ export function SummaryTab() {
 
   // Prepare data for charts
   const costBreakdownData = [
-    { name: 'Materials', value: totalMaterials, color: '#8b5cf6' },
-    { name: 'Labor', value: totalLabor, color: '#f59e0b' },
+    { name: 'Development Tools', value: totalDevelopmentTools, color: '#8b5cf6' },
+    { name: 'Development Costs', value: totalDevelopmentCosts, color: '#f59e0b' },
     { name: 'Broker Payments', value: totalBroker, color: '#10b981' },
-    { name: 'Petty Cash', value: totalPetty, color: '#3b82f6' },
+    { name: 'Miscellaneous', value: totalMiscellaneous, color: '#3b82f6' },
   ].filter(item => item.value > 0);
 
   const profitLossData = [
@@ -132,16 +132,16 @@ export function SummaryTab() {
       .reduce((sum, r) => sum + (r.amount || 0), 0);
 
     const monthCosts = [
-      ...(materials || []),
-      ...(labor || []),
+      ...(development_tools || []),
+      ...(development_costs || []),
       ...(brokers || []),
-      ...(pettyCash || [])
+      ...(miscellaneous || [])
     ]
       .filter(c => {
         const d = new Date(c.date || c.createdAt);
         return allMonths[d.getMonth()] === month && (c.currency === mainCurrency || !c.currency);
       })
-      .reduce((sum, c) => sum + (Number(c.amount) || Number(c.totalCost) || Number(c.payment) || 0), 0);
+      .reduce((sum, c) => sum + (Number(c.amount) || Number(c.totalCost) || Number(c.cost) || 0), 0);
 
     return {
       month,
@@ -362,15 +362,15 @@ export function SummaryTab() {
                   <TableBody>
                     <SummaryRow 
                       icon={<Hammer className="w-4 h-4 text-purple-500" />} 
-                      label="Total Materials" 
-                      amountBreakdown={materialsByCurrency} 
-                      mainAmount={totalMaterials} 
+                      label="Total Development Tools" 
+                      amountBreakdown={developmentToolsByCurrency} 
+                      mainAmount={totalDevelopmentTools} 
                     />
                     <SummaryRow 
                       icon={<UsersRound className="w-4 h-4 text-amber-500" />} 
-                      label="Total Labor" 
-                      amountBreakdown={laborByCurrency} 
-                      mainAmount={totalLabor} 
+                      label="Total Development Costs" 
+                      amountBreakdown={developmentCostsByCurrency} 
+                      mainAmount={totalDevelopmentCosts} 
                     />
                     <SummaryRow 
                       icon={<Briefcase className="w-4 h-4 text-emerald-500" />} 
@@ -380,9 +380,9 @@ export function SummaryTab() {
                     />
                     <SummaryRow 
                       icon={<Wallet className="w-4 h-4 text-blue-500" />} 
-                      label="Total Petty Cash" 
-                      amountBreakdown={pettyCashByCurrency} 
-                      mainAmount={totalPetty} 
+                      label="Total Miscellaneous" 
+                      amountBreakdown={miscellaneousByCurrency} 
+                      mainAmount={totalMiscellaneous} 
                     />
                     <TableRow className="bg-muted/20">
                       <TableCell className="font-bold text-base whitespace-nowrap">Total Project Cost</TableCell>
