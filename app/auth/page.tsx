@@ -15,7 +15,7 @@ import { LogIn, User, Zap, AlertTriangle, Wifi, WifiOff, Building, IdCard, HelpC
 
 export default function AuthPage() {
   const router = useRouter();
-  const { user, isLoading, login, register, getSecurityQuestion, verifySecurityAnswer, changePassword, removeInitialAdmin } = useAuth();
+  const { user, isLoading, login, register, getSecurityQuestion, verifySecurityAnswer, changePassword } = useAuth();
   const [securityQuestion, setSecurityQuestion] = useState<string | null>(null);
   const [isFetchingQuestion, setIsFetchingQuestion] = useState(false);
   const [recoveryStaffId, setRecoveryStaffId] = useState('');
@@ -24,7 +24,6 @@ export default function AuthPage() {
   const [tab, setTab] = useState<'login' | 'recovery'>('login');
   const [isOnline, setIsOnline] = useState(true);
   const [showSetupGuide, setShowSetupGuide] = useState(false);
-  const [showResetConfirm, setShowResetConfirm] = useState(false);
   const signupFormRef = useRef<HTMLFormElement>(null);
   
   const [showPassword, setShowPassword] = useState(false);
@@ -197,24 +196,6 @@ export default function AuthPage() {
     }
   };
 
-  const handleResetSystem = async () => {
-    setLoading(true);
-    try {
-      const result = await removeInitialAdmin();
-      if (result.success) {
-        toast.success('System reset successfully! Please create a new administrator account.');
-        setShowResetConfirm(false);
-        window.location.reload();
-      } else {
-        throw new Error(result.error || 'Reset failed');
-      }
-    } catch (error: any) {
-      toast.error(error.message || 'Reset failed');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
     const fetchQuestion = async () => {
       if (!recoveryStaffId || !recoveryOrgName) {
@@ -314,22 +295,13 @@ export default function AuthPage() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <label className="text-sm font-bold text-white uppercase tracking-wider">Password</label>
-                    <div className="flex gap-4">
-                      <button 
-                        type="button" 
-                        onClick={() => setShowResetConfirm(true)}
-                        className="text-xs text-red-400 font-bold hover:text-red-300"
-                      >
-                        Reset System?
-                      </button>
-                      <button 
-                        type="button" 
-                        onClick={() => setTab('recovery')}
-                        className="text-xs text-blue-400 font-bold hover:text-blue-300"
-                      >
-                        Recovery?
-                      </button>
-                    </div>
+                    <button 
+                      type="button" 
+                      onClick={() => setTab('recovery')}
+                      className="text-xs text-blue-400 font-bold hover:text-blue-300"
+                    >
+                      Recovery?
+                    </button>
                   </div>
                   <div className="relative">
                     <LockIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -414,23 +386,6 @@ export default function AuthPage() {
             </div>
             <Button onClick={() => handleInitializeAdmin('admin')} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold h-10 text-sm" disabled={loading}>Create Administrator</Button>
             <p className="text-[10px] text-blue-300 text-center font-medium mt-2">Default S/N: ACRUX-ADMIN-01 | PASS: admin@123</p>
-          </div>
-        )}
-
-        {showResetConfirm && (
-          <div className="mt-8 p-6 bg-red-900/20 border border-red-800 rounded-2xl backdrop-blur-sm animate-in fade-in slide-in-from-bottom-4 duration-700">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-red-600 rounded-lg"><AlertTriangle className="w-5 h-5 text-white" /></div>
-              <div>
-                <h3 className="text-white font-bold">Reset System Authentication</h3>
-                <p className="text-red-200 text-xs">This will delete all users and reset the system.</p>
-              </div>
-            </div>
-            <p className="text-red-300 text-sm mb-4">Are you sure you want to reset the entire authentication system? This action cannot be undone.</p>
-            <div className="flex gap-2">
-              <Button onClick={handleResetSystem} className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold h-10 text-sm" disabled={loading}>Yes, Reset</Button>
-              <Button onClick={() => setShowResetConfirm(false)} variant="outline" className="flex-1 border-red-600 text-red-300 hover:bg-red-900/20 h-10 text-sm">Cancel</Button>
-            </div>
           </div>
         )}
       </div>

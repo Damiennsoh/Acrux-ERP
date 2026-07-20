@@ -23,7 +23,7 @@ import { toast } from 'sonner';
 import { Settings, Download, Upload, BarChart3, Lock, Moon, Sun, Database, UserPlus, UserMinus, Shield } from 'lucide-react';
 
 export function SettingsTab() {
-  const { user, getUsers, deleteUser, register, updateUserRole, changePassword } = useAuth();
+  const { user, getUsers, deleteUser, register, updateUserRole, changePassword, removeInitialAdmin } = useAuth();
   const { currency, setCurrency } = useCurrency();
   const isAdmin = user?.isAdmin;
   const { theme, setTheme } = useTheme();
@@ -35,6 +35,7 @@ export function SettingsTab() {
   const [newUser, setNewUser] = useState({ name: '', staffId: '', password: '', role: 'user', department: 'General' });
   const [newPassword, setNewPassword] = useState('');
   const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   // Load saved settings on mount
   useEffect(() => {
@@ -202,6 +203,18 @@ export function SettingsTab() {
       setShowPasswordForm(false);
     } else {
       toast.error(result.error || 'Failed to change password');
+    }
+  };
+
+  const handleResetSystem = async () => {
+    const result = await removeInitialAdmin();
+    if (result.success) {
+      toast.success('System reset successfully! Redirecting to login...');
+      setTimeout(() => {
+        window.location.href = '/auth';
+      }, 1500);
+    } else {
+      toast.error(result.error || 'Failed to reset system');
     }
   };
 
@@ -612,6 +625,19 @@ export function SettingsTab() {
               </Button>
 
               <div className="pt-4 border-t border-border">
+                <Button 
+                  onClick={() => setShowResetConfirm(true)} 
+                  variant="outline" 
+                  className="w-full text-destructive hover:text-destructive border-destructive"
+                >
+                  Reset System Authentication
+                </Button>
+                <p className="text-xs text-muted-foreground mt-2 text-center">
+                  This will delete all users and reset the system. Use with caution.
+                </p>
+              </div>
+
+              <div className="pt-4 border-t border-border">
                 <p className="text-xs text-muted-foreground mb-4">
                   Last activity: Just now
                 </p>
@@ -622,6 +648,30 @@ export function SettingsTab() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {showResetConfirm && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <Card className="max-w-md w-full">
+              <CardHeader>
+                <CardTitle className="text-destructive">Reset System Authentication</CardTitle>
+                <CardDescription>This will delete all users and reset the entire authentication system.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Are you sure you want to reset the entire authentication system? This action cannot be undone. All users will be deleted and you will need to create a new administrator account.
+                </p>
+                <div className="flex gap-2">
+                  <Button onClick={handleResetSystem} className="flex-1 bg-destructive hover:bg-destructive/90">
+                    Yes, Reset
+                  </Button>
+                  <Button onClick={() => setShowResetConfirm(false)} variant="outline" className="flex-1">
+                    Cancel
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </Tabs>
     </div>
   );
