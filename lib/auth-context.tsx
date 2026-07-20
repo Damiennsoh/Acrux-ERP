@@ -7,6 +7,7 @@ import { getDB } from './indexeddb';
 import { securityService } from './security-service';
 import { userDB } from './user-db';
 import { slugifyOrg } from './utils/org';
+import { createClient } from '@supabase/supabase-js';
 
 export interface AuthUser {
   id: string;
@@ -53,6 +54,23 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const getEmailFromStaffId = (staffId: string) => {
   const timestamp = Date.now();
   return `${staffId.toLowerCase().replace(/[^a-z0-9]/g, '')}+${timestamp}@glp-erp.local`;
+};
+
+// Create service role client for admin operations (bypasses rate limits)
+const getServiceRoleClient = () => {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+  
+  if (!supabaseUrl || !serviceRoleKey) {
+    return null;
+  }
+  
+  return createClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  });
 };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -265,7 +283,85 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     
     const email = getEmailFromStaffId(staffId);
     
-    // First check if user already exists in Supabase
+    // Try service role client first (bypasses rate limits)
+    const serviceRoleClient = getServiceRoleClient();
+    if (serviceRoleClient && role === 'admin') {
+      try {
+        const { data: adminData, error: adminError } = await serviceRoleClient.auth.admin.createUser({
+          email,
+          password,
+          email_confirm: true,
+          user_metadata: {
+            staffId,
+            name,
+            role,
+            isAdmin: role === 'admin',
+            organizationName,
+            department,
+            securityQuestion,
+            securityAnswer
+          }
+        });
+
+        if (!adminError && adminData?.user) {
+          // Create user profile
+          await serviceRoleClient.from('user_profiles').insert({
+            id: adminData.user.id,
+            staffId,
+            name,
+            role,
+            isAdmin: role === 'admin',
+            organizationName,
+            department,
+            defaultCurrency: 'USD'
+          });
+
+          // Add to local DB
+          await userDB.addUser({
+            username: email,
+            name,
+            passwordHash: 'managed-by-supabase',
+            role: role as any,
+            isAdmin: role === 'admin',
+            organizationName,
+            department,
+            staffId,
+            securityQuestion,
+          });
+
+          // Log in with regular client
+          const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
+            email,
+            password
+          });
+
+          if (!loginError && loginData?.session) {
+            let profileData = null;
+            const { data: profiles } = await supabase.from('user_profiles').select('*').eq('id', loginData.user.id).limit(1);
+            profileData = profiles && profiles.length > 0 ? profiles[0] : null;
+
+            const meta = loginData.user.user_metadata || {};
+            const authUser: AuthUser = {
+              id: loginData.user.id,
+              staffId: profileData?.staffId || meta.staffId || staffId,
+              name: profileData?.name || meta.name || 'User',
+              role: profileData?.role || meta.role || 'user',
+              isAdmin: profileData?.isAdmin ?? (meta.isAdmin === true),
+              organizationName: profileData?.organizationName || meta.organizationName || 'Default Org',
+              department: profileData?.department || meta.department || 'General',
+              defaultCurrency: profileData?.defaultCurrency || meta.defaultCurrency
+            };
+
+            setState({ user: authUser, isAuthenticated: true, isLoading: false });
+            return { success: true };
+          }
+        }
+      } catch (err) {
+        console.error('Service role registration failed, falling back to regular auth:', err);
+      }
+    }
+    
+    // Fallback to regular auth (with rate limit handling)
     const { data: existingUser, error: checkError } = await supabase.auth.signInWithPassword({
       email,
       password
