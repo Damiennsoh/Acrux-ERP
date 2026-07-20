@@ -261,6 +261,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     
     const email = getEmailFromStaffId(staffId);
     
+    // First check if user already exists in Supabase
+    const { data: existingUser, error: checkError } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
+
+    if (!checkError && existingUser?.session) {
+      // User already exists, just log them in
+      await supabase.auth.signOut(); // Sign out from the check
+      
+      let profileData = null;
+      const { data: profiles } = await supabase.from('user_profiles').select('*').eq('id', existingUser.user.id).limit(1);
+      profileData = profiles && profiles.length > 0 ? profiles[0] : null;
+
+      const meta = existingUser.user.user_metadata || {};
+      const authUser: AuthUser = {
+        id: existingUser.user.id,
+        staffId: profileData?.staffId || meta.staffId || staffId,
+        name: profileData?.name || meta.name || 'User',
+        role: profileData?.role || meta.role || 'user',
+        isAdmin: profileData?.isAdmin ?? (meta.isAdmin === true),
+        organizationName: profileData?.organizationName || meta.organizationName || 'Default Org',
+        department: profileData?.department || meta.department || 'General',
+        defaultCurrency: profileData?.defaultCurrency || meta.defaultCurrency
+      };
+
+      setState({ user: authUser, isAuthenticated: true, isLoading: false });
+      
+      // Also ensure user is in local DB
+      await userDB.addUser({
+        username: email,
+        name,
+        passwordHash: 'managed-by-supabase',
+        role: role as any,
+        isAdmin: role === 'admin',
+        organizationName,
+        department,
+        staffId,
+        securityQuestion,
+      });
+
+      return { success: true };
+    }
+    
+    // User doesn't exist, create new one
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -272,8 +317,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           isAdmin: role === 'admin',
           organizationName,
           department,
-          securityQuestion, // stored strictly in metadata for local usage
-          securityAnswer // in a real app, hash this before storing
+          securityQuestion,
+          securityAnswer
         }
       }
     });
