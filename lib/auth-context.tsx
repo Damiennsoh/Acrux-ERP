@@ -7,7 +7,6 @@ import { getDB } from './indexeddb';
 import { securityService } from './security-service';
 import { userDB } from './user-db';
 import { slugifyOrg } from './utils/org';
-import { createClient } from '@supabase/supabase-js';
 
 export interface AuthUser {
   id: string;
@@ -54,23 +53,6 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const getDummyEmail = (staffId: string) => {
   const clean = staffId.toLowerCase().replace(/[^a-z0-9]/g, '');
   return `${clean}@dummy.local`;
-};
-
-// Create service role client for admin operations (bypasses rate limits)
-const getServiceRoleClient = () => {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-  
-  if (!supabaseUrl || !serviceRoleKey) {
-    return null;
-  }
-  
-  return createClient(supabaseUrl, serviceRoleKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  });
 };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -286,81 +268,73 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     
     const email = getDummyEmail(staffId);
     
-    // Try service role client first (bypasses rate limits)
-    const serviceRoleClient = getServiceRoleClient();
-    if (serviceRoleClient && role === 'admin') {
+    // For admin creation, use server API route (bypasses rate limits)
+    if (role === 'admin') {
       try {
-        const { data: adminData, error: adminError } = await serviceRoleClient.auth.admin.createUser({
-          email,
-          password,
-          email_confirm: true,
-          user_metadata: {
+        const response = await fetch('/api/create-admin', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
             staffId,
+            password,
             name,
-            role,
-            isAdmin: role === 'admin',
             organizationName,
-            department,
-            securityQuestion,
-            securityAnswer
-          }
+            department
+          })
         });
 
-        if (!adminError && adminData?.user) {
-          // Create user profile (remove email field)
-          await serviceRoleClient.from('user_profiles').insert({
-            id: adminData.user.id,
-            staffId,
-            name,
-            role,
-            isAdmin: role === 'admin',
-            organizationName,
-            department,
-            defaultCurrency: 'USD'
-          });
+        const data = await response.json();
 
-          // Add to local DB (use staff ID as username instead of email)
-          await userDB.addUser({
-            username: staffId,
-            name,
-            passwordHash: 'managed-by-supabase',
-            role: role as any,
-            isAdmin: role === 'admin',
-            organizationName,
-            department,
-            staffId,
-            securityQuestion,
-          });
+        if (!response.ok || !data.success) {
+          return { success: false, error: data.error || 'Failed to create admin' };
+        }
 
-          // Log in with regular client
-          const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
-            email,
-            password
-          });
+        // Add to local DB (use staff ID as username)
+        await userDB.addUser({
+          username: staffId,
+          name,
+          passwordHash: 'managed-by-supabase',
+          role: role as any,
+          isAdmin: role === 'admin',
+          organizationName,
+          department,
+          staffId,
+          securityQuestion,
+        });
 
-          if (!loginError && loginData?.session) {
-            let profileData = null;
-            const { data: profiles } = await supabase.from('user_profiles').select('*').eq('id', loginData.user.id).limit(1);
-            profileData = profiles && profiles.length > 0 ? profiles[0] : null;
+        // Log in with regular client
+        const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
+          email,
+          password
+        });
 
-            const meta = loginData.user.user_metadata || {};
-            const authUser: AuthUser = {
-              id: loginData.user.id,
-              staffId: profileData?.staffId || meta.staffId || staffId,
-              name: profileData?.name || meta.name || 'User',
-              role: profileData?.role || meta.role || 'user',
-              isAdmin: profileData?.isAdmin ?? (meta.isAdmin === true),
-              organizationName: profileData?.organizationName || meta.organizationName || 'Default Org',
-              department: profileData?.department || meta.department || 'General',
-              defaultCurrency: profileData?.defaultCurrency || meta.defaultCurrency
-            };
+        if (!loginError && loginData?.session) {
+          let profileData = null;
+          const { data: profiles } = await supabase.from('user_profiles').select('*').eq('id', loginData.user.id).limit(1);
+          profileData = profiles && profiles.length > 0 ? profiles[0] : null;
 
-            setState({ user: authUser, isAuthenticated: true, isLoading: false });
-            return { success: true };
-          }
+          const meta = loginData.user.user_metadata || {};
+          const authUser: AuthUser = {
+            id: loginData.user.id,
+            staffId: profileData?.staffId || meta.staffId || staffId,
+            name: profileData?.name || meta.name || 'User',
+            role: profileData?.role || meta.role || 'user',
+            isAdmin: profileData?.isAdmin ?? (meta.isAdmin === true),
+            organizationName: profileData?.organizationName || meta.organizationName || 'Default Org',
+            department: profileData?.department || meta.department || 'General',
+            defaultCurrency: profileData?.defaultCurrency || meta.defaultCurrency
+          };
+
+          setState({ user: authUser, isAuthenticated: true, isLoading: false });
+          return { success: true };
+        } else {
+          return { success: false, error: loginError?.message || 'Login failed after admin creation' };
         }
       } catch (err) {
-        console.error('Service role registration failed, falling back to regular auth:', err);
+        console.error('API admin creation failed:', err);
+        return { success: false, error: 'Failed to create admin via API' };
       }
     }
     
@@ -427,6 +401,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     if (error) {
+      // Handle rate limit specifically
+      if (error.status === 429) {
+        return { success: false, error: 'Too many sign-up attempts. Please wait a few minutes.' };
+      }
       return { success: false, error: error.message };
     }
     
