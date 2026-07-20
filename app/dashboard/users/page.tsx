@@ -163,7 +163,7 @@ export default function UserManagementPage() {
                 </div>
                 <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight" style={{ color: '#ffffff', textShadow: '2px 2px 4px rgba(0,0,0,0.8)' }}>User Management</h1>
               </div>
-              <p className="font-bold text-sm sm:text-base lg:text-lg" style={{ color: '#d1fae5', textShadow: '1px 1px 2px rgba(0,0,0,0.8)' }}>Active Command Center • Green Land Power Inc</p>
+              <p className="font-bold text-sm sm:text-base lg:text-lg" style={{ color: '#d1fae5', textShadow: '1px 1px 2px rgba(0,0,0,0.8)' }}>Active Command Center</p>
             </div>
             
             <div className="flex items-center gap-3 p-3 sm:p-4 rounded-xl border-2 border-green-500 shadow-xl self-start sm:self-auto" style={{ backgroundColor: '#ffffff' }}>
@@ -285,7 +285,9 @@ export default function UserManagementPage() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-white font-bold text-sm sm:text-lg truncate">{u.name}</p>
-                          <p className="text-blue-300 text-xs sm:text-sm font-medium">{u.staffId}</p>
+                          <p className="text-blue-300 text-xs sm:text-sm font-medium">
+                            {u.id === currentUser.id ? u.staffId : '***'}
+                          </p>
                           {/* Mobile-only department info */}
                           <p className="text-slate-400 text-xs sm:hidden mt-0.5">{u.department || 'General'}</p>
                         </div>

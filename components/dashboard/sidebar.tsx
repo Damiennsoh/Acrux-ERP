@@ -159,7 +159,6 @@ export function Sidebar({ user }: SidebarProps) {
 
         <SectionLabel text="Costs" />
         <NavLink href="/dashboard?tab=development-tools" icon={<Hammer className="w-4 h-4" />} label="Development Tools" isActive={activeTab === 'development-tools'} />
-        <NavLink href="/dashboard?tab=development-costs" icon={<UsersRound className="w-4 h-4" />} label="Development Costs" isActive={activeTab === 'development-costs'} />
         <NavLink href="/dashboard?tab=broker" icon={<Briefcase className="w-4 h-4" />} label="Broker Payments" isActive={activeTab === 'broker'} />
         <NavLink href="/dashboard?tab=miscellaneous" icon={<Wallet className="w-4 h-4" />} label="Miscellaneous" isActive={activeTab === 'miscellaneous'} />
 

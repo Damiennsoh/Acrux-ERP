@@ -1,9 +1,7 @@
-const CACHE_NAME = 'finmanage-pro-v1';
+const CACHE_NAME = 'acrux-erp-v1';
 const urlsToCache = [
   '/',
-  '/icon.svg',
-  '/icon-192x192.png',
-  '/icon-512x512.png',
+  '/Acrux-LOGO.jpg',
   '/manifest.json',
 ];
 
@@ -117,11 +115,11 @@ self.addEventListener('sync', (event) => {
 
 // Handle push notifications
 self.addEventListener('push', (event) => {
-  let notificationTitle = 'GLP FinManage';
+  let notificationTitle = 'ACRUX ERP';
   let notificationOptions = {
-    body: event.data ? event.data.text() : 'You have a new update from Green Land Power',
-    icon: '/icon-192x192.png',
-    badge: '/icon-192x192.png',
+    body: event.data ? event.data.text() : 'You have a new update from ACRUX IT SOLUTIONS',
+    icon: '/Acrux-LOGO.jpg',
+    badge: '/Acrux-LOGO.jpg',
   };
 
   event.waitUntil(

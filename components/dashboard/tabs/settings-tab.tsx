@@ -91,7 +91,7 @@ export function SettingsTab() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `glp-backup-${new Date().toISOString().split('T')[0]}.json`;
+      a.download = `acrux-backup-${new Date().toISOString().split('T')[0]}.json`;
       a.click();
       URL.revokeObjectURL(url);
       toast.success('Database backup exported successfully');
@@ -453,7 +453,10 @@ export function SettingsTab() {
               )}
 
               <div className="space-y-2">
-                <h4 className="font-semibold text-sm">Existing Users</h4>
+                <div className="flex items-center justify-between">
+                  <h4 className="font-semibold text-sm">Existing Users</h4>
+                  <span className="text-xs text-muted-foreground">Total: {users.length}</span>
+                </div>
                 {users.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No users found</p>
                 ) : (
@@ -462,7 +465,9 @@ export function SettingsTab() {
                       <div key={u.id} className="flex items-center justify-between p-3 border border-border rounded-lg">
                         <div className="flex-1">
                           <p className="font-medium text-sm">{u.name}</p>
-                          <p className="text-xs text-muted-foreground">{u.staffId} • {u.department}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {u.id === user?.id ? u.staffId : '***'} • {u.department}
+                          </p>
                         </div>
                         <div className="flex items-center gap-2">
                           <Select

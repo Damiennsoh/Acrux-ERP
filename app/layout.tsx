@@ -19,18 +19,18 @@ export const viewport = {
 }
 
 export const metadata: Metadata = {
-  title: 'FinManage Pro - Green Land Power Inc',
-  description: 'Professional financial management dashboard for Green Land Power Inc',
+  title: 'ACRUX ERP - ACRUX IT SOLUTIONS',
+  description: 'Professional financial management dashboard for ACRUX IT SOLUTIONS',
   generator: 'v0.app',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'FinManage Pro',
+    title: 'ACRUX ERP',
   },
   icons: {
-    icon: '/GLP-LOGO.jpeg',
-    apple: '/GLP-LOGO.jpeg',
+    icon: '/Acrux-LOGO.jpg',
+    apple: '/Acrux-LOGO.jpg',
   },
 }
 

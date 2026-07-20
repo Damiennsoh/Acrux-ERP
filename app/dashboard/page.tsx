@@ -13,7 +13,6 @@ import { useAuth } from '@/lib/auth-context';
 import { Zap } from 'lucide-react';
 
 import { DevelopmentToolsTab } from '@/components/dashboard/tabs/development-tools-tab';
-import { DevelopmentCostsTab } from '@/components/dashboard/tabs/development-costs-tab';
 import { BrokerTab } from '@/components/dashboard/tabs/broker-tab';
 import { MiscellaneousTab } from '@/components/dashboard/tabs/miscellaneous-tab';
 import { AuditLogTab } from '@/components/dashboard/tabs/audit-log-tab';
@@ -57,10 +56,6 @@ function DashboardContent() {
 
           <TabsContent value="development-tools" className="space-y-4 m-0 border-none p-0 outline-none">
             <DevelopmentToolsTab />
-          </TabsContent>
-          
-          <TabsContent value="development-costs" className="space-y-4 m-0 border-none p-0 outline-none">
-            <DevelopmentCostsTab />
           </TabsContent>
           
           <TabsContent value="broker" className="space-y-4 m-0 border-none p-0 outline-none">

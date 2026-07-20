@@ -68,7 +68,7 @@ export function PWAInstall() {
     <div className="fixed bottom-20 sm:bottom-6 right-4 z-50">
       <div className="bg-card border border-border rounded-lg shadow-lg p-4 flex items-center gap-4 max-w-sm">
         <div className="flex-1">
-          <h3 className="font-semibold text-sm text-foreground">Install FinManage Pro</h3>
+          <h3 className="font-semibold text-sm text-foreground">Install ACRUX ERP</h3>
           <p className="text-xs text-muted-foreground mt-1">Install as an app for offline access</p>
         </div>
 
