@@ -313,7 +313,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           name,
           role,
           isAdmin: role === 'admin',
-          organizationName,
+          organizationName: slugifyOrg(organizationName),
           department,
           defaultCurrency: 'USD'
         } as any);
@@ -401,7 +401,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         name,
         role,
         isAdmin: role === 'admin',
-        organizationName,
+        organizationName: slugifyOrg(organizationName),
         department,
         defaultCurrency: 'USD'
       } as any);
@@ -457,7 +457,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         name,
         role,
         isAdmin: role === 'admin',
-        organizationName,
+        organizationName: slugifyOrg(organizationName),
         department,
         defaultCurrency: 'USD'
       } as any);
