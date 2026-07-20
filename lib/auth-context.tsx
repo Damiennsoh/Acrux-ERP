@@ -304,6 +304,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           securityQuestion,
         });
 
+        // Also add to user_profiles IndexedDB store for getUsers to work
+        const db = await getDB();
+        await db.put('user_profiles', {
+          id: data.user.id,
+          staffId,
+          name,
+          role,
+          isAdmin: role === 'admin',
+          organizationName,
+          department,
+          defaultCurrency: 'USD'
+        } as any);
+
         // Log in with regular client
         const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
           email,
@@ -379,6 +392,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         securityQuestion,
       });
 
+      // Also add to user_profiles IndexedDB store for getUsers to work
+      const db = await getDB();
+      await db.put('user_profiles', {
+        id: existingUser.user.id,
+        staffId,
+        name,
+        role,
+        isAdmin: role === 'admin',
+        organizationName,
+        department,
+        defaultCurrency: 'USD'
+      } as any);
+
       return { success: true };
     }
     
@@ -420,6 +446,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       staffId,
       securityQuestion,
     });
+
+    // Also add to user_profiles IndexedDB store for getUsers to work
+    if (data.user) {
+      const db = await getDB();
+      await db.put('user_profiles', {
+        id: data.user.id,
+        staffId,
+        name,
+        role,
+        isAdmin: role === 'admin',
+        organizationName,
+        department,
+        defaultCurrency: 'USD'
+      } as any);
+    }
 
     // PUSH DIRECTLY TO SUPABASE USER PROFILES (remove email field)
     if (navigator.onLine && data.user) {

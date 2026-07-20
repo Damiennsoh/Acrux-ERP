@@ -29,8 +29,8 @@ export const metadata: Metadata = {
     title: 'ACRUX ERP',
   },
   icons: {
-    icon: '/Acrux-LOGO.jpg',
-    apple: '/Acrux-LOGO.jpg',
+    icon: '/Acrux-LOGO.png',
+    apple: '/Acrux-LOGO.png',
   },
 }
 

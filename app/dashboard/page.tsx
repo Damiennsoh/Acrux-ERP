@@ -31,7 +31,7 @@ function DashboardContent() {
         <div className="flex h-16 items-center justify-between px-4 gap-4">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg flex items-center justify-center shadow-md overflow-hidden" style={{ background: 'rgba(255,255,255,0.18)' }}>
-              <img src="/Acrux-LOGO.jpg" alt="ACRUX Logo" className="w-full h-full object-contain" />
+              <img src="/Acrux-LOGO.png" alt="ACRUX Logo" className="w-full h-full object-contain" />
             </div>
             <div>
               <h1 className="text-base font-bold text-white" style={{ fontFamily: "'Outfit', 'Inter', sans-serif" }}>ACRUX ERP</h1>

@@ -1,7 +1,7 @@
 const CACHE_NAME = 'acrux-erp-v1';
 const urlsToCache = [
   '/',
-  '/Acrux-LOGO.jpg',
+  '/Acrux-LOGO.png',
   '/manifest.json',
 ];
 
@@ -118,8 +118,8 @@ self.addEventListener('push', (event) => {
   let notificationTitle = 'ACRUX ERP';
   let notificationOptions = {
     body: event.data ? event.data.text() : 'You have a new update from ACRUX IT SOLUTIONS',
-    icon: '/Acrux-LOGO.jpg',
-    badge: '/Acrux-LOGO.jpg',
+    icon: '/Acrux-LOGO.png',
+    badge: '/Acrux-LOGO.png',
   };
 
   event.waitUntil(
