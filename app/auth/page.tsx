@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { userDB } from '@/lib/user-db';
+import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -50,10 +51,23 @@ export default function AuthPage() {
   useEffect(() => {
     const checkInitialState = async () => {
       try {
+        // Check IndexedDB for admin users
         const users = await userDB.getAllUsers();
-        // Only show setup guide if there are no admin users
-        const hasAdmin = users.some(u => u.isAdmin === true);
-        if (!hasAdmin) {
+        const hasLocalAdmin = users.some(u => u.isAdmin === true);
+
+        // Also check Supabase if online
+        let hasRemoteAdmin = false;
+        if (navigator.onLine) {
+          try {
+            const { data } = await supabase.from('user_profiles').select('isAdmin').eq('isAdmin', true).limit(1);
+            hasRemoteAdmin = data && data.length > 0;
+          } catch (e) {
+            console.error('Error checking Supabase for admin:', e);
+          }
+        }
+
+        // Only show setup guide if there are no admin users locally or remotely
+        if (!hasLocalAdmin && !hasRemoteAdmin) {
           setShowSetupGuide(true);
         }
       } catch (error) {

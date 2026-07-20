@@ -20,10 +20,10 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { Settings, Download, Upload, BarChart3, Lock, Moon, Sun, Database, UserPlus, UserMinus, Shield } from 'lucide-react';
+import { Settings, Download, Upload, BarChart3, Lock, Moon, Sun, Database, UserPlus, UserMinus, Shield, Cloud, RefreshCw, CloudOff } from 'lucide-react';
 
 export function SettingsTab() {
-  const { user, getUsers, deleteUser, register, updateUserRole, changePassword, removeInitialAdmin } = useAuth();
+  const { user, getUsers, deleteUser, register, updateUserRole, changePassword, removeInitialAdmin, isCloudSyncing, cloudSyncError, triggerSync, isOnline } = useAuth();
   const { currency, setCurrency } = useCurrency();
   const isAdmin = user?.isAdmin;
   const { theme, setTheme } = useTheme();
@@ -36,6 +36,8 @@ export function SettingsTab() {
   const [newPassword, setNewPassword] = useState('');
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [pendingSyncCount, setPendingSyncCount] = useState(0);
+  const [syncHealth, setSyncHealth] = useState<'healthy' | 'warning' | 'error'>('healthy');
 
   // Load saved settings on mount
   useEffect(() => {
@@ -54,6 +56,47 @@ export function SettingsTab() {
       getUsers().then(setUsers).catch(console.error);
     }
   }, [isAdmin, getUsers]);
+
+  // Check pending sync count
+  useEffect(() => {
+    const checkPendingSync = async () => {
+      try {
+        const db = await getDB();
+        const queue = await db.getAll('syncQueue');
+        const pending = queue.filter(item => !item.synced);
+        setPendingSyncCount(pending.length);
+        
+        // Determine sync health
+        if (cloudSyncError) {
+          setSyncHealth('error');
+        } else if (pending.length > 10) {
+          setSyncHealth('warning');
+        } else {
+          setSyncHealth('healthy');
+        }
+      } catch (error) {
+        console.error('Error checking sync queue:', error);
+      }
+    };
+
+    checkPendingSync();
+    const interval = setInterval(checkPendingSync, 5000);
+    return () => clearInterval(interval);
+  }, [isCloudSyncing, cloudSyncError]);
+
+  const handleManualSync = async () => {
+    await triggerSync();
+    setTimeout(async () => {
+      try {
+        const db = await getDB();
+        const queue = await db.getAll('syncQueue');
+        const pending = queue.filter(item => !item.synced);
+        setPendingSyncCount(pending.length);
+      } catch (error) {
+        console.error('Error checking sync queue:', error);
+      }
+    }, 1000);
+  };
 
   const handleThemeChange = (newTheme: string) => {
     setTheme(newTheme);
@@ -164,6 +207,7 @@ export function SettingsTab() {
       toast.success('User created successfully');
       setShowAddUser(false);
       setNewUser({ name: '', staffId: '', password: '', role: 'user', department: 'General' });
+      // Refresh users from auth context
       getUsers().then(setUsers).catch(console.error);
     } else {
       toast.error(result.error || 'Failed to create user');
@@ -241,7 +285,7 @@ export function SettingsTab() {
             <Shield className="w-4 h-4" />
             <span className="hidden sm:inline">Users</span>
           </TabsTrigger>
-          <TabsTrigger value="export" className="flex items-center gap-2">
+          <TabsTrigger value="data" className="flex items-center gap-2">
             <Database className="w-4 h-4" />
             <span className="hidden sm:inline">Data</span>
           </TabsTrigger>
@@ -503,8 +547,70 @@ export function SettingsTab() {
           </Card>
         </TabsContent>
 
-        {/* Export Settings */}
-        <TabsContent value="export" className="space-y-6">
+        {/* Data Management */}
+        <TabsContent value="data" className="space-y-6">
+          {/* Sync Status Card */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Sync Status</CardTitle>
+                  <CardDescription>Monitor and control data synchronization with cloud</CardDescription>
+                </div>
+                <div className={`px-3 py-1 rounded-full text-xs font-bold ${
+                  syncHealth === 'healthy' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                  syncHealth === 'warning' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
+                  'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                }`}>
+                  {syncHealth === 'healthy' ? 'Healthy' : syncHealth === 'warning' ? 'Warning' : 'Error'}
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50 border">
+                <div className="flex items-center gap-3">
+                  {isCloudSyncing ? (
+                    <RefreshCw className="w-5 h-5 text-blue-500 animate-spin" />
+                  ) : isOnline ? (
+                    <Cloud className="w-5 h-5 text-green-500" />
+                  ) : (
+                    <CloudOff className="w-5 h-5 text-orange-500" />
+                  )}
+                  <div>
+                    <p className="font-semibold text-sm">
+                      {isCloudSyncing ? 'Syncing...' : isOnline ? 'Connected' : 'Offline'}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {pendingSyncCount} pending changes
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  onClick={handleManualSync}
+                  disabled={isCloudSyncing || !isOnline}
+                  size="sm"
+                  variant={isOnline ? "default" : "secondary"}
+                >
+                  {isCloudSyncing ? 'Syncing...' : 'Sync Now'}
+                </Button>
+              </div>
+              {cloudSyncError && (
+                <div className="p-3 rounded-lg bg-red-50 border border-red-200 dark:bg-red-950/20 dark:border-red-900">
+                  <p className="text-sm text-red-700 dark:text-red-400">
+                    <strong>Last sync error:</strong> {cloudSyncError}
+                  </p>
+                </div>
+              )}
+              <div className="text-xs text-muted-foreground space-y-1">
+                <p>• Data syncs automatically when online</p>
+                <p>• Changes are queued when offline</p>
+                <p>• Manual sync available anytime when connected</p>
+                <p>• Failed syncs are retried automatically</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* System Backup & Restore */}
           <Card>
             <CardHeader>
               <CardTitle>System Backup & Restore</CardTitle>

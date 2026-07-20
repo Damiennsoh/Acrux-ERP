@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
+import { getDB } from '@/lib/indexeddb';
 import {
   LayoutDashboard,
   FolderKanban,
@@ -22,6 +23,9 @@ import {
   Wifi,
   WifiOff,
   History as AuditHistory,
+  Cloud,
+  CloudOff,
+  RefreshCw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -49,13 +53,14 @@ export function Sidebar({ user }: SidebarProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const activeTab = searchParams.get('tab') || 'dashboard';
-  const { logout } = useAuth();
+  const { logout, isCloudSyncing, cloudSyncError, triggerSync, isOnline } = useAuth();
   const isAdmin = user?.isAdmin;
-  const [isOnline, setIsOnline] = React.useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [isOnlineLocal, setIsOnlineLocal] = React.useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [pendingSyncCount, setPendingSyncCount] = React.useState(0);
 
   React.useEffect(() => {
-    const goOnline = () => setIsOnline(true);
-    const goOffline = () => setIsOnline(false);
+    const goOnline = () => setIsOnlineLocal(true);
+    const goOffline = () => setIsOnlineLocal(false);
     window.addEventListener('online', goOnline);
     window.addEventListener('offline', goOffline);
     return () => {
@@ -63,6 +68,37 @@ export function Sidebar({ user }: SidebarProps) {
       window.removeEventListener('offline', goOffline);
     };
   }, []);
+
+  React.useEffect(() => {
+    const checkPendingSync = async () => {
+      try {
+        const db = await getDB();
+        const queue = await db.getAll('syncQueue');
+        const pending = queue.filter(item => !item.synced);
+        setPendingSyncCount(pending.length);
+      } catch (error) {
+        console.error('Error checking sync queue:', error);
+      }
+    };
+
+    checkPendingSync();
+    const interval = setInterval(checkPendingSync, 5000);
+    return () => clearInterval(interval);
+  }, [isCloudSyncing]);
+
+  const handleManualSync = async () => {
+    await triggerSync();
+    setTimeout(async () => {
+      try {
+        const db = await getDB();
+        const queue = await db.getAll('syncQueue');
+        const pending = queue.filter(item => !item.synced);
+        setPendingSyncCount(pending.length);
+      } catch (error) {
+        console.error('Error checking sync queue:', error);
+      }
+    }, 1000);
+  };
 
   const handleLogout = async () => {
     try {
@@ -143,6 +179,76 @@ export function Sidebar({ user }: SidebarProps) {
             </p>
           </div>
         </div>
+        {/* Sync Status Indicator */}
+        <div style={{ marginTop: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <button
+            onClick={handleManualSync}
+            disabled={isCloudSyncing || !isOnline}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.375rem',
+              padding: '0.375rem 0.75rem',
+              borderRadius: '0.375rem',
+              background: WHITE_10,
+              border: `1px solid ${WHITE_12}`,
+              color: WHITE,
+              fontSize: '0.7rem',
+              fontWeight: 500,
+              cursor: isCloudSyncing || !isOnline ? 'not-allowed' : 'pointer',
+              opacity: isCloudSyncing || !isOnline ? 0.5 : 1,
+              transition: 'all 0.2s',
+            }}
+            onMouseEnter={(e) => {
+              if (!isCloudSyncing && isOnline) {
+                e.currentTarget.style.background = WHITE_18;
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = WHITE_10;
+            }}
+          >
+            {isCloudSyncing ? (
+              <RefreshCw style={{ width: '0.875rem', height: '0.875rem', animation: 'spin 1s linear infinite' }} />
+            ) : isOnline ? (
+              <Cloud style={{ width: '0.875rem', height: '0.875rem' }} />
+            ) : (
+              <CloudOff style={{ width: '0.875rem', height: '0.875rem' }} />
+            )}
+            <span>{isCloudSyncing ? 'Syncing...' : isOnline ? 'Synced' : 'Offline'}</span>
+          </button>
+          {pendingSyncCount > 0 && (
+            <span
+              style={{
+                background: '#f97316',
+                color: WHITE,
+                fontSize: '0.65rem',
+                fontWeight: 700,
+                padding: '0.25rem 0.5rem',
+                borderRadius: '9999px',
+                minWidth: '1.25rem',
+                textAlign: 'center',
+              }}
+            >
+              {pendingSyncCount}
+            </span>
+          )}
+        </div>
+        {cloudSyncError && (
+          <div
+            style={{
+              marginTop: '0.5rem',
+              padding: '0.5rem',
+              borderRadius: '0.375rem',
+              background: 'rgba(239, 68, 68, 0.2)',
+              border: `1px solid rgba(239, 68, 68, 0.3)`,
+            }}
+          >
+            <p style={{ fontFamily: FONT_FAMILY, fontSize: '0.65rem', color: '#fca5a5', margin: 0 }}>
+              Sync failed: {cloudSyncError}
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Navigation */}

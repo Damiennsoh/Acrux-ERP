@@ -6,12 +6,30 @@ import { getDB } from './indexeddb';
 export class HybridSyncEngine {
   private static instance: HybridSyncEngine;
   private isSyncing = false;
+  private retryCount = 0;
+  private maxRetries = 3;
+  private retryDelay = 1000; // Start with 1 second
+  private syncErrors: string[] = [];
   
   public static getInstance(): HybridSyncEngine {
     if (!HybridSyncEngine.instance) {
       HybridSyncEngine.instance = new HybridSyncEngine();
     }
     return HybridSyncEngine.instance;
+  }
+
+  /**
+   * Get recent sync errors for monitoring
+   */
+  getSyncErrors(): string[] {
+    return [...this.syncErrors];
+  }
+
+  /**
+   * Clear sync errors
+   */
+  clearSyncErrors(): void {
+    this.syncErrors = [];
   }
 
   /**
@@ -28,6 +46,9 @@ export class HybridSyncEngine {
       // Sort by timestamp to preserve operation order
       const pending = queue.filter(item => !item.synced).sort((a, b) => a.timestamp - b.timestamp);
 
+      let successCount = 0;
+      let failureCount = 0;
+
       for (const item of pending) {
         try {
           if (item.action === 'delete') {
@@ -37,7 +58,12 @@ export class HybridSyncEngine {
               .update({ isDeleted: true })
               .eq('id', item.documentId);
               
-            if (!error) await db.delete('syncQueue', item.id);
+            if (!error) {
+              await db.delete('syncQueue', item.id);
+              successCount++;
+            } else {
+              throw error;
+            }
           } else {
             // audit_logs are append-only — skip conflict resolution to avoid 403 RLS issues
             if (item.collection === 'audit_logs') {
@@ -46,6 +72,7 @@ export class HybridSyncEngine {
                 .upsert({ ...item.data, id: item.documentId });
               if (!auditError) {
                 await db.delete('syncQueue', item.id);
+                successCount++;
               } else {
                 // Non-fatal: audit log sync failure is tolerated, remove from queue to avoid retry spam
                 console.warn('[SyncEngine] audit_log sync skipped (RLS or schema issue):', (auditError as any).message);
@@ -125,13 +152,28 @@ export class HybridSyncEngine {
 
             if (!upsertError) {
               await db.delete('syncQueue', item.id); // Remove from queue on success
+              successCount++;
             } else {
-              console.error(`[SyncEngine] Push error for ${item.collection}:`, (upsertError as any).message || upsertError);
+              throw upsertError;
             }
           }
         } catch (err) {
-          console.error(`[SyncEngine] Sync failed for ${item.collection}:`, err);
+          failureCount++;
+          console.error(`[SyncEngine] Sync failed for ${item.collection}:`, (err as any).message || err);
+          this.syncErrors.push(`${item.collection}: ${(err as any).message || 'Unknown error'}`);
         }
+      }
+
+      // Reset retry count on success
+      if (failureCount === 0) {
+        this.retryCount = 0;
+        this.syncErrors = [];
+      } else if (this.retryCount < this.maxRetries) {
+        // Exponential backoff retry
+        this.retryCount++;
+        const delay = this.retryDelay * Math.pow(2, this.retryCount - 1);
+        console.log(`[SyncEngine] Retrying sync in ${delay}ms (attempt ${this.retryCount}/${this.maxRetries})`);
+        setTimeout(() => this.pushLocalChanges(), delay);
       }
     } finally {
       this.isSyncing = false;

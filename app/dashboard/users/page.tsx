@@ -5,6 +5,7 @@ import { useAuth, AuthUser } from '@/lib/auth-context';
 import { slugifyOrg } from '@/lib/utils/org';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -22,7 +23,9 @@ import {
   XCircle,
   ShieldCheck,
   UserCog,
-  ChevronRight
+  ChevronRight,
+  Edit,
+  X
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -45,20 +48,20 @@ const COLORS = {
 };
 
 export default function UserManagementPage() {
-  const { user: currentUser, getUsers, updateUserRole, deleteUser } = useAuth();
+  const { user: currentUser, getUsers, updateUserRole, deleteUser, updateUserProfile } = useAuth();
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [editingUser, setEditingUser] = useState<any | null>(null);
+  const [editForm, setEditForm] = useState({ name: '', staffId: '', department: '' });
 
   const fetchUsers = async () => {
     try {
       setLoading(true);
       const allUsers = await getUsers();
-      const orgSlug = slugifyOrg(currentUser?.organizationName || '');
-      // Filter by current organization slug to ensure consistency
-      const orgUsers = allUsers.filter(u => slugifyOrg(u.organizationName || '') === orgSlug);
-      setUsers(orgUsers);
+      // Don't filter by organization - getUsers already does this
+      setUsers(allUsers);
     } catch (error: any) {
       toast.error(error.message || 'Failed to fetch users');
     } finally {
@@ -119,6 +122,36 @@ export default function UserManagementPage() {
     } finally {
       setActionLoading(null);
     }
+  };
+
+  const handleEdit = (user: any) => {
+    setEditingUser(user);
+    setEditForm({ name: user.name, staffId: user.staffId, department: user.department || 'General' });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingUser) return;
+
+    try {
+      setActionLoading(editingUser.id);
+      const result = await updateUserProfile(editingUser.id, editForm);
+      if (result.success) {
+        toast.success('User profile updated successfully');
+        setEditingUser(null);
+        await fetchUsers();
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to update user');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingUser(null);
+    setEditForm({ name: '', staffId: '', department: '' });
   };
 
   if (loading) {
@@ -329,6 +362,15 @@ export default function UserManagementPage() {
                           <Button
                             variant="outline"
                             size="sm"
+                            onClick={() => handleEdit(u)}
+                            disabled={!!actionLoading}
+                            className="bg-slate-800/60 border-slate-600 text-slate-200 hover:bg-slate-700 hover:text-white font-semibold transition-all duration-200 text-xs px-2 sm:px-3 h-8"
+                          >
+                            <Edit className="w-3 h-3 sm:w-4 sm:h-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
                             onClick={() => handleToggleRole(u)}
                             disabled={!!actionLoading}
                             className="bg-slate-800/60 border-slate-600 text-slate-200 hover:bg-slate-700 hover:text-white font-semibold transition-all duration-200 text-xs px-2 sm:px-3 h-8"
@@ -382,6 +424,72 @@ export default function UserManagementPage() {
           End of directory • Data synchronized with local-first vault
         </p>
       </div>
+
+      {/* Edit User Modal */}
+      {editingUser && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 rounded-2xl border border-slate-700 shadow-2xl w-full max-w-md">
+            <div className="p-6 border-b border-slate-700">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-bold text-white">Edit User Profile</h3>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleCancelEdit}
+                  className="text-slate-400 hover:text-white hover:bg-slate-700"
+                >
+                  <X className="w-5 h-5" />
+                </Button>
+              </div>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-slate-300 mb-2">Name</label>
+                <Input
+                  value={editForm.name}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditForm({ ...editForm, name: e.target.value })}
+                  className="bg-slate-900 border-slate-700 text-white placeholder:text-slate-500"
+                  placeholder="User name"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-300 mb-2">Staff ID</label>
+                <Input
+                  value={editForm.staffId}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditForm({ ...editForm, staffId: e.target.value })}
+                  className="bg-slate-900 border-slate-700 text-white placeholder:text-slate-500"
+                  placeholder="ACRUX001"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-300 mb-2">Department</label>
+                <Input
+                  value={editForm.department}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditForm({ ...editForm, department: e.target.value })}
+                  className="bg-slate-900 border-slate-700 text-white placeholder:text-slate-500"
+                  placeholder="General"
+                />
+              </div>
+            </div>
+            <div className="p-6 border-t border-slate-700 flex gap-3">
+              <Button
+                onClick={handleSaveEdit}
+                disabled={actionLoading === editingUser.id}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold"
+              >
+                {actionLoading === editingUser.id ? 'Saving...' : 'Save Changes'}
+              </Button>
+              <Button
+                onClick={handleCancelEdit}
+                variant="outline"
+                className="flex-1 border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

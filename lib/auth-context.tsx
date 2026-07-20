@@ -32,6 +32,7 @@ interface AuthContextType extends AuthState {
   register: (name: string, staffId: string, password: string, role: string, organizationName?: string, department?: string, securityQuestion?: string, securityAnswer?: string) => Promise<{ success: boolean; error?: string }>;
   getUsers: () => Promise<any[]>;
   deleteUser: (userId: string) => Promise<{ success: boolean; error?: string }>;
+  updateUserProfile: (userId: string, updates: { name?: string; staffId?: string; department?: string }) => Promise<{ success: boolean; error?: string }>;
   removeInitialAdmin: () => Promise<{ success: boolean; error?: string }>;
   getSecurityQuestion: (staffId: string, orgName?: string) => Promise<string | null>;
   verifySecurityAnswer: (staffId: string, answer: string, orgName?: string) => Promise<{ success: boolean; user?: AuthUser; error?: string; locked?: boolean; lockoutRemaining?: number }>;
@@ -515,6 +516,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     return { success: true }; 
   };
+
+  const updateUserProfile = async (userId: string, updates: { name?: string; staffId?: string; department?: string }) => {
+    try {
+      const db = await getDB();
+      
+      // Update in IndexedDB user_profiles
+      const existingProfile = await db.get('user_profiles', userId);
+      if (existingProfile) {
+        const updatedProfile = { ...existingProfile, ...updates };
+        await db.put('user_profiles', updatedProfile);
+      }
+
+      // Update in IndexedDB users store
+      const existingUser = await userDB.getUserById(userId);
+      if (existingUser) {
+        await userDB.updateUser(userId, updates);
+      }
+
+      // Update in Supabase if online
+      if (navigator.onLine) {
+        const { error } = await supabase
+          .from('user_profiles')
+          .update(updates)
+          .eq('id', userId);
+        
+        if (error) {
+          console.error('[AuthContext] Supabase update error:', error);
+          // Don't fail the operation if Supabase update fails - will sync later
+        }
+      }
+
+      // Update current user state if updating self
+      if (state.user?.id === userId) {
+        setState(prev => ({
+          ...prev,
+          user: prev.user ? { ...prev.user, ...updates } : null
+        }));
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      console.error('[AuthContext] Update user profile error:', err);
+      return { success: false, error: err.message || 'Failed to update user profile' };
+    }
+  };
   
   const removeInitialAdmin = async () => {
     try {
@@ -601,10 +647,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const sync = HybridSyncEngine.getInstance();
       await sync.pushLocalChanges();
       await sync.pullRemoteChanges(orgId);
+      
+      // Check for sync errors
+      const errors = sync.getSyncErrors();
+      if (errors.length > 0) {
+        setCloudSyncError(errors.join('; '));
+        sync.clearSyncErrors();
+      }
+      
       setIsCloudSyncing(false);
     } catch (error) {
       setIsCloudSyncing(false);
-      setCloudSyncError('Sync failed');
+      setCloudSyncError((error as any).message || 'Sync failed');
     }
   }, [state.user]);
 
@@ -615,6 +669,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     register,
     getUsers,
     deleteUser,
+    updateUserProfile,
     removeInitialAdmin,
     getSecurityQuestion,
     verifySecurityAnswer,
