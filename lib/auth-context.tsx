@@ -350,7 +350,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { success: true }; 
   };
   
-  const removeInitialAdmin = async () => { return { success: true }; };
+  const removeInitialAdmin = async () => {
+    try {
+      // Clear all users from IndexedDB
+      await userDB.clearAllUsers();
+      
+      // Sign out from Supabase
+      await supabase.auth.signOut();
+      
+      // Clear localStorage
+      localStorage.clear();
+      
+      return { success: true };
+    } catch (err: any) {
+      console.error('[AuthContext] Reset error:', err);
+      return { success: false, error: err.message || 'Reset failed' };
+    }
+  };
   
   const getSecurityQuestion = async (staffId: string, orgName?: string) => { 
     const finalOrg = orgName ? slugifyOrg(orgName) : slugifyOrg("Green Land Power Inc");

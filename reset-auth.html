@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reset Acrux ERP Authentication</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #1e293b;
+            margin-bottom: 10px;
+        }
+        p {
+            color: #64748b;
+            line-height: 1.6;
+        }
+        button {
+            background: #ef4444;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            margin-top: 20px;
+            width: 100%;
+        }
+        button:hover {
+            background: #dc2626;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            display: none;
+        }
+        .success {
+            background: #dcfce7;
+            color: #166534;
+            border: 1px solid #86efac;
+        }
+        .error {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fca5a5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔄 Reset Acrux ERP Authentication</h1>
+        <p>This will clear all local authentication data including:</p>
+        <ul>
+            <li>IndexedDB user database</li>
+            <li>Supabase auth session</li>
+            <li>Local storage settings</li>
+        </ul>
+        <p><strong>Warning:</strong> After resetting, you will need to create a new administrator account.</p>
+        <button onclick="resetSystem()">Reset Authentication System</button>
+        <div id="status" class="status"></div>
+    </div>
+
+    <script>
+        async function resetSystem() {
+            const statusEl = document.getElementById('status');
+            statusEl.style.display = 'block';
+            statusEl.className = 'status';
+            statusEl.textContent = 'Resetting...';
+
+            try {
+                // Clear IndexedDB
+                const databases = await indexedDB.databases();
+                for (const db of databases) {
+                    if (db.name && (db.name.includes('acrux') || db.name.includes('erp') || db.name.includes('user'))) {
+                        indexedDB.deleteDatabase(db.name);
+                        console.log('Deleted database:', db.name);
+                    }
+                }
+
+                // Clear localStorage
+                localStorage.clear();
+                console.log('Cleared localStorage');
+
+                // Clear sessionStorage
+                sessionStorage.clear();
+                console.log('Cleared sessionStorage');
+
+                // Clear Supabase auth session if available
+                if (window.supabase) {
+                    await window.supabase.auth.signOut();
+                    console.log('Signed out from Supabase');
+                }
+
+                statusEl.className = 'status success';
+                statusEl.textContent = '✅ Authentication system reset successfully! You can now close this tab and create a new administrator account.';
+            } catch (error) {
+                statusEl.className = 'status error';
+                statusEl.textContent = '❌ Error: ' + error.message;
+                console.error('Reset error:', error);
+            }
+        }
+    </script>
+</body>
+</html>
