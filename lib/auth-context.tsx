@@ -370,7 +370,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { success: false, error: 'Incorrect answer' };
   };
   const verifyAdminPassword = async (password: string) => { return { success: true }; };
-  const changePassword = async (password: string) => { return { success: true }; };
+  const changePassword = async (password: string) => {
+    try {
+      if (!state.user) {
+        return { success: false, error: 'No user logged in' };
+      }
+
+      if (!navigator.onLine) {
+        return { success: false, error: 'You must be online to change password' };
+      }
+
+      const { error } = await supabase.auth.updateUser({ password });
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+
+      // Update local userDB
+      await userDB.updateUser(state.user.id, { passwordHash: 'managed-by-supabase' });
+
+      return { success: true };
+    } catch (err: any) {
+      console.error('[AuthContext] Change password error:', err);
+      return { success: false, error: err.message || 'Password change failed' };
+    }
+  };
   
   const updateUserRole = async (userId: string, role: string) => { 
     await userDB.updateUser(userId, { role: role as any, isAdmin: role === 'admin' });

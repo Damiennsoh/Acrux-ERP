@@ -112,7 +112,7 @@ export function Sidebar({ user }: SidebarProps) {
               padding: '2px',
             }}
           >
-            <img src="/Acrux-LOGO.png" alt="ACRUX Logo" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '0.4rem' }} />
+            <img src="/Acrux-LOGO.jpg" alt="ACRUX Logo" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '0.4rem' }} />
           </div>
           <div>
             <h2

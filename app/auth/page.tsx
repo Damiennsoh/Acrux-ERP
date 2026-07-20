@@ -51,7 +51,9 @@ export default function AuthPage() {
     const checkInitialState = async () => {
       try {
         const users = await userDB.getAllUsers();
-        if (users.length === 0) {
+        // Only show setup guide if there are no admin users
+        const hasAdmin = users.some(u => u.isAdmin === true);
+        if (!hasAdmin) {
           setShowSetupGuide(true);
         }
       } catch (error) {
@@ -230,7 +232,7 @@ export default function AuthPage() {
       <div className="w-full max-w-md relative z-10">
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-24 h-24 rounded-2xl bg-white mb-4 shadow-xl shadow-blue-500/10 overflow-hidden border border-slate-700/50 p-1">
-            <img src="/Acrux-LOGO.png" alt="ACRUX Logo" className="w-full h-full object-contain rounded-xl" />
+            <img src="/Acrux-LOGO.jpg" alt="ACRUX Logo" className="w-full h-full object-contain rounded-xl" />
           </div>
           <h1 className="text-4xl font-bold text-white mb-1">ACRUX ERP</h1>
           <p className="text-blue-500 font-bold text-base">Enterprise Resource Planning</p>

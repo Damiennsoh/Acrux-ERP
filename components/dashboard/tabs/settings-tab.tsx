@@ -20,16 +20,21 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { Settings, Download, Upload, BarChart3, Lock, Moon, Sun, Database } from 'lucide-react';
+import { Settings, Download, Upload, BarChart3, Lock, Moon, Sun, Database, UserPlus, UserMinus, Shield } from 'lucide-react';
 
 export function SettingsTab() {
-  const { user } = useAuth();
+  const { user, getUsers, deleteUser, register, updateUserRole, changePassword } = useAuth();
   const { currency, setCurrency } = useCurrency();
   const isAdmin = user?.isAdmin;
   const { theme, setTheme } = useTheme();
   const [notifications, setNotifications] = useState(true);
   const [emailAlerts, setEmailAlerts] = useState(true);
   const [dateFormat, setDateFormat] = useState('MM/DD/YYYY');
+  const [users, setUsers] = useState<any[]>([]);
+  const [showAddUser, setShowAddUser] = useState(false);
+  const [newUser, setNewUser] = useState({ name: '', staffId: '', password: '', role: 'user', department: 'General' });
+  const [newPassword, setNewPassword] = useState('');
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
 
   // Load saved settings on mount
   useEffect(() => {
@@ -41,6 +46,13 @@ export function SettingsTab() {
     setEmailAlerts(savedEmailAlerts);
     setDateFormat(savedDateFormat);
   }, []);
+
+  // Load users on mount
+  useEffect(() => {
+    if (isAdmin) {
+      getUsers().then(setUsers).catch(console.error);
+    }
+  }, [isAdmin, getUsers]);
 
   const handleThemeChange = (newTheme: string) => {
     setTheme(newTheme);
@@ -132,6 +144,67 @@ export function SettingsTab() {
     }
   };
 
+  const handleAddUser = async () => {
+    if (!newUser.name || !newUser.staffId || !newUser.password) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+
+    const result = await register(
+      newUser.name,
+      newUser.staffId,
+      newUser.password,
+      newUser.role,
+      user?.organizationName,
+      newUser.department
+    );
+
+    if (result.success) {
+      toast.success('User created successfully');
+      setShowAddUser(false);
+      setNewUser({ name: '', staffId: '', password: '', role: 'user', department: 'General' });
+      getUsers().then(setUsers).catch(console.error);
+    } else {
+      toast.error(result.error || 'Failed to create user');
+    }
+  };
+
+  const handleDeleteUser = async (userId: string) => {
+    const result = await deleteUser(userId);
+    if (result.success) {
+      toast.success('User deleted successfully');
+      getUsers().then(setUsers).catch(console.error);
+    } else {
+      toast.error(result.error || 'Failed to delete user');
+    }
+  };
+
+  const handleUpdateRole = async (userId: string, newRole: string) => {
+    const result = await updateUserRole(userId, newRole);
+    if (result.success) {
+      toast.success('User role updated successfully');
+      getUsers().then(setUsers).catch(console.error);
+    } else {
+      toast.error(result.error || 'Failed to update role');
+    }
+  };
+
+  const handleChangePassword = async () => {
+    if (!newPassword || newPassword.length < 6) {
+      toast.error('Password must be at least 6 characters');
+      return;
+    }
+
+    const result = await changePassword(newPassword);
+    if (result.success) {
+      toast.success('Password changed successfully');
+      setNewPassword('');
+      setShowPasswordForm(false);
+    } else {
+      toast.error(result.error || 'Failed to change password');
+    }
+  };
+
 
   if (!isAdmin) {
     return (
@@ -146,14 +219,18 @@ export function SettingsTab() {
   return (
     <div className="space-y-6">
       <Tabs defaultValue="general" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="general" className="flex items-center gap-2">
             <Settings className="w-4 h-4" />
             <span className="hidden sm:inline">General</span>
           </TabsTrigger>
+          <TabsTrigger value="users" className="flex items-center gap-2">
+            <Shield className="w-4 h-4" />
+            <span className="hidden sm:inline">Users</span>
+          </TabsTrigger>
           <TabsTrigger value="export" className="flex items-center gap-2">
             <Database className="w-4 h-4" />
-            <span className="hidden sm:inline">Data & Backup</span>
+            <span className="hidden sm:inline">Data</span>
           </TabsTrigger>
           <TabsTrigger value="security" className="flex items-center gap-2">
             <Lock className="w-4 h-4" />
@@ -285,6 +362,129 @@ export function SettingsTab() {
           </Card>
         </TabsContent>
 
+        {/* User Management */}
+        <TabsContent value="users" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>User Management</CardTitle>
+              <CardDescription>Create and manage user accounts for your organization</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Button onClick={() => setShowAddUser(true)} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold">
+                <UserPlus className="w-4 h-4 mr-2" />
+                Add New User
+              </Button>
+
+              {showAddUser && (
+                <div className="space-y-4 p-4 border border-border rounded-lg bg-muted/50">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="new-name">Name</Label>
+                      <Input
+                        id="new-name"
+                        value={newUser.name}
+                        onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
+                        placeholder="John Doe"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="new-staff-id">Staff ID</Label>
+                      <Input
+                        id="new-staff-id"
+                        value={newUser.staffId}
+                        onChange={(e) => setNewUser({ ...newUser, staffId: e.target.value })}
+                        placeholder="ACRUX001"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="new-password">Password</Label>
+                      <Input
+                        id="new-password"
+                        type="password"
+                        value={newUser.password}
+                        onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+                        placeholder="••••••••"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="new-department">Department</Label>
+                      <Input
+                        id="new-department"
+                        value={newUser.department}
+                        onChange={(e) => setNewUser({ ...newUser, department: e.target.value })}
+                        placeholder="General"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="new-role">Role</Label>
+                    <Select value={newUser.role} onValueChange={(value) => setNewUser({ ...newUser, role: value })}>
+                      <SelectTrigger id="new-role">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="user">User</SelectItem>
+                        <SelectItem value="admin">Admin</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button onClick={handleAddUser} className="flex-1 bg-blue-600 hover:bg-blue-700">
+                      Create User
+                    </Button>
+                    <Button onClick={() => setShowAddUser(false)} variant="outline" className="flex-1">
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <h4 className="font-semibold text-sm">Existing Users</h4>
+                {users.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No users found</p>
+                ) : (
+                  <div className="space-y-2">
+                    {users.map((u) => (
+                      <div key={u.id} className="flex items-center justify-between p-3 border border-border rounded-lg">
+                        <div className="flex-1">
+                          <p className="font-medium text-sm">{u.name}</p>
+                          <p className="text-xs text-muted-foreground">{u.staffId} • {u.department}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Select
+                            value={u.role}
+                            onValueChange={(value) => handleUpdateRole(u.id, value)}
+                            disabled={u.id === user?.id}
+                          >
+                            <SelectTrigger className="w-24 h-8">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="user">User</SelectItem>
+                              <SelectItem value="admin">Admin</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          {u.id !== user?.id && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleDeleteUser(u.id)}
+                              className="h-8 w-8 text-destructive hover:text-destructive"
+                            >
+                              <UserMinus className="w-4 h-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         {/* Export Settings */}
         <TabsContent value="export" className="space-y-6">
           <Card>
@@ -380,9 +580,32 @@ export function SettingsTab() {
                 </div>
               </div>
 
-              <Button variant="outline" className="w-full">
-                Change Password
-              </Button>
+              {showPasswordForm ? (
+                <div className="space-y-4 p-4 border border-border rounded-lg bg-muted/50">
+                  <div>
+                    <Label htmlFor="new-password-input">New Password</Label>
+                    <Input
+                      id="new-password-input"
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="••••••••"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button onClick={handleChangePassword} className="flex-1 bg-blue-600 hover:bg-blue-700">
+                      Change Password
+                    </Button>
+                    <Button onClick={() => setShowPasswordForm(false)} variant="outline" className="flex-1">
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button onClick={() => setShowPasswordForm(true)} variant="outline" className="w-full">
+                  Change Password
+                </Button>
+              )}
 
               <Button variant="outline" className="w-full">
                 Enable Two-Factor Authentication

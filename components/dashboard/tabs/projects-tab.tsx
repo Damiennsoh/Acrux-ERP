@@ -121,7 +121,7 @@ export function ProjectsTab() {
     if (!editingId && formData.name.trim().length >= 3) {
       const namePart = formData.name.trim().substring(0, 3).toUpperCase();
       const year = new Date().getFullYear();
-      let baseId = `PRJ-GLP-${namePart}-${year}`;
+      let baseId = `PRJ-AIT-${namePart}-${year}`;
       
       // Collision detection check against existing projects
       const existingIds = projects?.map(p => p.projectId) || [];

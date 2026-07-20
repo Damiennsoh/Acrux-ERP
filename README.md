@@ -1,23 +1,23 @@
-# Green Land Power ERP — Financial Management Dashboard
+# ACRUX ERP — Financial Management Dashboard
 
-**Green Land Power ERP** is a professional, mobile-first financial management platform designed for **Green Land Power Inc**, an electrical engineering and construction company in Liberia. Built with modern web technologies, it provides real-time financial insights, multi-currency tracking, project management, and comprehensive expense/revenue management with **offline-first** capability.
+**ACRUX ERP** is a professional, mobile-first financial management platform designed for **ACRUX IT SOLUTIONS**, a software development company. Built with modern web technologies, it provides real-time financial insights, multi-currency tracking, project management, and comprehensive expense/revenue management with **offline-first** capability.
 
 ---
 
 ## ✨ Key Features
 
 ### Financial Management (Multi-Currency)
-- **Multi-Currency Support**: All financial modules (Materials, Labor, Revenue, Expenses, Petty Cash, Broker Payments) support LRD and USD transactions independently. Totals are aggregated per-currency in every tab header and the Summary dashboard.
+- **Multi-Currency Support**: All financial modules (Development Tools, Development Costs, Revenue, Expenses, Miscellaneous, Broker Payments) support USD, EUR, GBP, GHS, ZWL, and other currencies independently. Totals are aggregated per-currency in every tab header and the Summary dashboard.
 - **Revenue Tab**: Track payments received per project with currency breakdown, source, and invoice status.
 - **Expenses Tab**: Categorized expense tracking with currency selection and vendor management.
-- **Materials Tab**: Per-item cost tracking with quantity × unit cost = total cost, supporting multiple currencies.
-- **Labor Tab**: Workforce payment records with currency-per-worker support.
-- **Petty Cash Tab**: Small expense tracking with customizable categories and currency selection.
+- **Development Tools Tab**: Per-item cost tracking with quantity × unit cost = total cost, supporting multiple currencies.
+- **Development Costs Tab**: Developer payment records with currency-per-developer support.
+- **Miscellaneous Tab**: Small expense tracking with customizable categories and currency selection.
 - **Broker Payments Tab**: Commission tracking with multi-currency header totals.
 
 ### Financial Summary Dashboard
 - **KPI Cards**: Total Budget, Total Costs (by currency), Net Revenue, Active/Completed Projects.
-- **Cost Breakdown** (Pie Chart): Visual breakdown of Materials, Labor, Broker, Petty Cash in the active currency.
+- **Cost Breakdown** (Pie Chart): Visual breakdown of Development Tools, Development Costs, Broker, Miscellaneous in the active currency.
 - **6-Month Trend** (Area Chart): Revenue vs. Costs vs. Profit tracked monthly.
 - **Financial Health Score**: Profit margin %, progress toward 20% target margin.
 - **Detailed Cost Table**: Currency-breakdown table showing exact totals per-currency for every cost category.
@@ -77,7 +77,7 @@
 
 ```bash
 git clone <repository-url>
-cd v0-green-land-power-erp
+cd Acrux-ERP
 pnpm install
 ```
 
@@ -122,9 +122,9 @@ Open [http://localhost:3000](http://localhost:3000).
 │   │   │   ├── summary-tab.tsx   # KPIs, charts, multi-currency totals
 │   │   │   ├── revenue-tab.tsx   # Payment received tracking
 │   │   │   ├── expenses-tab.tsx  # Expense management
-│   │   │   ├── materials-tab.tsx # Material cost tracking
-│   │   │   ├── labor-tab.tsx     # Workforce payment tracking
-│   │   │   ├── petty-cash-tab.tsx# Small expense management
+│   │   │   ├── development-tools-tab.tsx # Development tool cost tracking
+│   │   │   ├── development-costs-tab.tsx # Developer payment tracking
+│   │   │   ├── miscellaneous-tab.tsx # Small expense management
 │   │   │   ├── broker-tab.tsx    # Commission tracking
 │   │   │   ├── projects-tab.tsx  # Project CRUD
 │   │   │   └── audit-log-tab.tsx # System-wide audit trail
@@ -138,7 +138,7 @@ Open [http://localhost:3000](http://localhost:3000).
 │   ├── indexeddb.ts              # IndexedDB schema & access layer
 │   ├── sync-service.ts           # Hybrid Sync Engine (Push/Pull + Audit)
 │   ├── auth-context.tsx          # Auth state & Offline Auth Guard
-│   ├── currency-context.tsx      # Global currency selection (LRD/USD)
+│   ├── currency-context.tsx      # Global currency selection (USD/EUR/GBP/GHS/ZWL)
 │   └── utils/
 │       ├── org.ts                # slugifyOrg() utility
 │       └── date.ts               # toISODate(), formatDate() utilities
@@ -162,7 +162,7 @@ Every call to `createOrUpdateDoc()` or `deleteDocWithSync()` in `lib/sync-servic
 ### Cascading Soft-Delete
 When a project is deleted:
 1. **Client-side** (`deleteProjectWithCascade`): Iterates all child collections and calls `deleteDocWithSync()` for each orphaned record.
-2. **Server-side** (PostgreSQL trigger `tr_cascade_project_delete`): AFTER UPDATE on `projects.isDeleted = true`, automatically marks all linked expenses, revenue, materials, labor, petty cash, and broker payments as `isDeleted = true` in Supabase — a safety net for any records missed by the sync queue.
+2. **Server-side** (PostgreSQL trigger `tr_cascade_project_delete`): AFTER UPDATE on `projects.isDeleted = true`, automatically marks all linked expenses, revenue, development_tools, development_costs, miscellaneous, and broker_payments as `isDeleted = true` in Supabase — a safety net for any records missed by the sync queue.
 
 ---
 
@@ -175,9 +175,9 @@ When a project is deleted:
 | `projects` | Core project records with budget tracking |
 | `revenue` | Income entries (multi-currency) |
 | `expenses` | Expense entries (multi-currency) |
-| `materials` | Material cost entries (multi-currency, totalCost = qty × unitCost) |
-| `labor` | Worker payment records (multi-currency) |
-| `petty_cash` | Small expense records (multi-currency) |
+| `development_tools` | Development tool cost entries (multi-currency, totalCost = qty × unitCost) |
+| `development_costs` | Developer payment records (multi-currency) |
+| `miscellaneous` | Small expense records (multi-currency) |
 | `broker_payments` | Commission/broker payment records (multi-currency) |
 | `audit_logs` | Immutable change trail (CREATE / UPDATE / DELETE) |
 
@@ -219,4 +219,4 @@ Deploy to Vercel:
 
 ---
 
-**Green Land Power ERP** — Built for reliability, offline-first, and financial accuracy. ⚡
+**ACRUX ERP** — Built for reliability, offline-first, and financial accuracy. ⚡

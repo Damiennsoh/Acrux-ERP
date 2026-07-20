@@ -1,12 +1,12 @@
 {
-  "name": "FinManage Pro - Green Land Power Inc",
-  "short_name": "FinManage Pro",
-  "description": "Professional financial management dashboard for Green Land Power Inc",
+  "name": "ACRUX ERP - ACRUX IT SOLUTIONS",
+  "short_name": "ACRUX ERP",
+  "description": "Professional financial management dashboard for ACRUX IT SOLUTIONS",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
-  "theme_color": "#059669",
+  "theme_color": "#2563eb",
   "background_color": "#ffffff",
   "screenshots": [
     {
@@ -24,25 +24,25 @@
   ],
   "icons": [
     {
-      "src": "/GLP-LOGO.jpeg",
+      "src": "/Acrux-LOGO.jpg",
       "type": "image/jpeg",
       "sizes": "any",
       "purpose": "any"
     },
     {
-      "src": "/GLP-LOGO.jpeg",
+      "src": "/Acrux-LOGO.jpg",
       "type": "image/jpeg",
       "sizes": "192x192",
       "purpose": "any"
     },
     {
-      "src": "/GLP-LOGO.jpeg",
+      "src": "/Acrux-LOGO.jpg",
       "type": "image/jpeg",
       "sizes": "512x512",
       "purpose": "any"
     },
     {
-      "src": "/GLP-LOGO.jpeg",
+      "src": "/Acrux-LOGO.jpg",
       "type": "image/jpeg",
       "sizes": "192x192",
       "purpose": "maskable"
@@ -57,7 +57,7 @@
       "url": "/?tab=summary",
       "icons": [
         {
-          "src": "/GLP-LOGO.jpeg",
+          "src": "/Acrux-LOGO.jpg",
           "sizes": "192x192",
           "type": "image/jpeg"
         }
@@ -70,7 +70,7 @@
       "url": "/?tab=projects",
       "icons": [
         {
-          "src": "/GLP-LOGO.jpeg",
+          "src": "/Acrux-LOGO.jpg",
           "sizes": "192x192",
           "type": "image/jpeg"
         }

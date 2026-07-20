@@ -31,8 +31,8 @@ function DashboardContent() {
       <header className="sm:hidden sticky top-0 z-40 border-b border-blue-800 shadow-sm" style={{ background: 'linear-gradient(90deg, #1e3a8a, #2563eb)' }}>
         <div className="flex h-16 items-center justify-between px-4 gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center shadow-md" style={{ background: 'rgba(255,255,255,0.18)' }}>
-              <Zap className="w-4 h-4 text-white" />
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center shadow-md overflow-hidden" style={{ background: 'rgba(255,255,255,0.18)' }}>
+              <img src="/Acrux-LOGO.jpg" alt="ACRUX Logo" className="w-full h-full object-contain" />
             </div>
             <div>
               <h1 className="text-base font-bold text-white" style={{ fontFamily: "'Outfit', 'Inter', sans-serif" }}>ACRUX ERP</h1>
