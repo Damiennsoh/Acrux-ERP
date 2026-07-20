@@ -50,10 +50,10 @@ interface AuthContextType extends AuthState {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // Helper to map staffId to a pseudo-email for Supabase Auth
-// Add timestamp to avoid rate limiting on repeated signups
+// Use deterministic mapping so same staff ID always maps to same email
 const getEmailFromStaffId = (staffId: string) => {
-  const timestamp = Date.now();
-  return `${staffId.toLowerCase().replace(/[^a-z0-9]/g, '')}+${timestamp}@glp-erp.local`;
+  const clean = staffId.toLowerCase().replace(/[^a-z0-9]/g, '');
+  return `${clean}@glp-erp.local`;
 };
 
 // Create service role client for admin operations (bypasses rate limits)
