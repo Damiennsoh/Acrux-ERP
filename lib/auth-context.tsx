@@ -49,11 +49,11 @@ interface AuthContextType extends AuthState {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Helper to map staffId to a pseudo-email for Supabase Auth
-// Use deterministic mapping so same staff ID always maps to same email
-const getEmailFromStaffId = (staffId: string) => {
+// Helper to generate a dummy email for Supabase Auth (required by Supabase but not used)
+// The actual authentication is based on staff ID + password stored in metadata
+const getDummyEmail = (staffId: string) => {
   const clean = staffId.toLowerCase().replace(/[^a-z0-9]/g, '');
-  return `${clean}@glp-erp.local`;
+  return `${clean}@dummy.local`;
 };
 
 // Create service role client for admin operations (bypasses rate limits)
@@ -193,7 +193,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (staffId: string, pin: string, organizationName?: string) => {
     try {
-      const email = getEmailFromStaffId(staffId);
+      const email = getDummyEmail(staffId);
       
       if (!navigator.onLine) {
         // Handle strictly offline login against IndexedDB sessions if cached
@@ -201,20 +201,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // we assume login requires internet for the *first* time, or relies on existing session.
         const db = await getDB();
         const localSession = await db.get('auth_sessions', 'current-session');
-        if (localSession && localSession.sessionData.user.email === email && localSession.expiresAt > Date.now()) {
+        if (localSession && localSession.expiresAt > Date.now()) {
           const meta = localSession.sessionData.user.user_metadata || {};
-          const authUser: AuthUser = {
-            id: localSession.userId,
-            staffId: meta.staffId,
-            name: meta.name,
-            role: meta.role,
-            isAdmin: meta.isAdmin,
-            organizationName: meta.organizationName,
-            department: meta.department,
-            defaultCurrency: meta.defaultCurrency
-          };
-          setState({ user: authUser, isAuthenticated: true, isLoading: false });
-          return { success: true };
+          // Check by staff ID instead of email
+          if (meta.staffId === staffId) {
+            const authUser: AuthUser = {
+              id: localSession.userId,
+              staffId: meta.staffId,
+              name: meta.name,
+              role: meta.role,
+              isAdmin: meta.isAdmin,
+              organizationName: meta.organizationName,
+              department: meta.department,
+              defaultCurrency: meta.defaultCurrency
+            };
+            setState({ user: authUser, isAuthenticated: true, isLoading: false });
+            return { success: true };
+          }
         }
         return { success: false, error: 'You must be online to log in for the first time.' };
       }
@@ -281,7 +284,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { success: false, error: 'You must be online to register users.' };
     }
     
-    const email = getEmailFromStaffId(staffId);
+    const email = getDummyEmail(staffId);
     
     // Try service role client first (bypasses rate limits)
     const serviceRoleClient = getServiceRoleClient();
@@ -304,7 +307,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
 
         if (!adminError && adminData?.user) {
-          // Create user profile
+          // Create user profile (remove email field)
           await serviceRoleClient.from('user_profiles').insert({
             id: adminData.user.id,
             staffId,
@@ -316,9 +319,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             defaultCurrency: 'USD'
           });
 
-          // Add to local DB
+          // Add to local DB (use staff ID as username instead of email)
           await userDB.addUser({
-            username: email,
+            username: staffId,
             name,
             passwordHash: 'managed-by-supabase',
             role: role as any,
@@ -389,9 +392,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       setState({ user: authUser, isAuthenticated: true, isLoading: false });
       
-      // Also ensure user is in local DB
+      // Also ensure user is in local DB (use staff ID as username)
       await userDB.addUser({
-        username: email,
+        username: staffId,
         name,
         passwordHash: 'managed-by-supabase',
         role: role as any,
@@ -427,9 +430,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { success: false, error: error.message };
     }
     
-    // Also push user to local userDB
+    // Also push user to local userDB (use staff ID as username)
     await userDB.addUser({
-      username: email,
+      username: staffId,
       name,
       passwordHash: 'managed-by-supabase',
       role: role as any,
@@ -440,11 +443,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       securityQuestion,
     });
 
-    // PUSH DIRECTLY TO SUPABASE USER PROFILES
+    // PUSH DIRECTLY TO SUPABASE USER PROFILES (remove email field)
     if (navigator.onLine && data.user) {
       await supabase.from('user_profiles').upsert({
         id: data.user.id,
-        email,
         staffId,
         name,
         role,
