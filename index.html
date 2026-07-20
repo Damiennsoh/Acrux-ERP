@@ -1,0 +1,1685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Financial Management System - Electrical Engineering</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/fontsource-inter@5.0.0/index.css" rel="stylesheet">
+    <style>
+        * {
+            font-family: 'Inter', sans-serif;
+        }
+        .retool-card {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        .retool-input {
+            border: 1px solid #d0d0d0;
+            border-radius: 4px;
+            padding: 8px 12px;
+            font-size: 14px;
+            transition: border-color 0.2s;
+        }
+        .retool-input:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+        }
+        .retool-btn-primary {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 8px 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .retool-btn-primary:hover {
+            background: #2563eb;
+        }
+        .retool-btn-secondary {
+            background: white;
+            color: #374151;
+            border: 1px solid #d0d0d0;
+            border-radius: 4px;
+            padding: 8px 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .retool-btn-secondary:hover {
+            background: #f9fafb;
+        }
+        .table-header {
+            background: #f9fafb;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .table-row:hover {
+            background: #f9fafb;
+        }
+        .metric-card {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            color: white;
+            border-radius: 6px;
+            padding: 20px;
+        }
+        .metric-card-secondary {
+            background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+            color: white;
+            border-radius: 6px;
+            padding: 20px;
+        }
+        .nav-item {
+            padding: 10px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+            color: #4b5563;
+            font-weight: 500;
+        }
+        .nav-item:hover {
+            background: #f3f4f6;
+        }
+        .nav-item.active {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .status-ongoing {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+        .status-completed {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #a1a1a1;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        // IndexedDB Helper Functions
+        const DB_NAME = 'FinancialManagementDB';
+        const DB_VERSION = 1;
+
+        const initDB = () => {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(DB_NAME, DB_VERSION);
+                
+                request.onerror = () => reject(request.error);
+                request.onsuccess = () => resolve(request.result);
+                
+                request.onupgradeneeded = (event) => {
+                    const db = event.target.result;
+                    
+                    const stores = ['projects', 'materials', 'labor', 'brokerPayments', 'pettyCash', 'revenue'];
+                    stores.forEach(storeName => {
+                        if (!db.objectStoreNames.contains(storeName)) {
+                            const store = db.createObjectStore(storeName, { keyPath: 'id', autoIncrement: true });
+                            store.createIndex('projectId', 'projectId', { unique: false });
+                        }
+                    });
+                };
+            });
+        };
+
+        const dbOperation = async (storeName, mode, callback) => {
+            const db = await initDB();
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction(storeName, mode);
+                const store = transaction.objectStore(storeName);
+                const request = callback(store);
+                
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+            });
+        };
+
+        const getAllRecords = async (storeName) => {
+            return await dbOperation(storeName, 'readonly', store => store.getAll());
+        };
+
+        const addRecord = async (storeName, record) => {
+            return await dbOperation(storeName, 'readwrite', store => store.add(record));
+        };
+
+        const updateRecord = async (storeName, record) => {
+            return await dbOperation(storeName, 'readwrite', store => store.put(record));
+        };
+
+        const deleteRecord = async (storeName, id) => {
+            return await dbOperation(storeName, 'readwrite', store => store.delete(id));
+        };
+
+        // Generate unique Project ID
+        const generateProjectId = () => {
+            return 'PRJ-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).substr(2, 4).toUpperCase();
+        };
+
+        // Format currency
+        const formatCurrency = (amount) => {
+            return new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD',
+                minimumFractionDigits: 2
+            }).format(amount);
+        };
+
+        // Format date
+        const formatDate = (dateString) => {
+            if (!dateString) return '';
+            return new Date(dateString).toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric'
+            });
+        };
+
+        // Main App Component
+        function App() {
+            const [activeTab, setActiveTab] = useState('dashboard');
+            const [data, setData] = useState({
+                projects: [],
+                materials: [],
+                labor: [],
+                brokerPayments: [],
+                pettyCash: [],
+                revenue: []
+            });
+            const [loading, setLoading] = useState(true);
+
+            // Load all data on mount
+            useEffect(() => {
+                loadAllData();
+            }, []);
+
+            const loadAllData = async () => {
+                try {
+                    const [projects, materials, labor, brokerPayments, pettyCash, revenue] = await Promise.all([
+                        getAllRecords('projects'),
+                        getAllRecords('materials'),
+                        getAllRecords('labor'),
+                        getAllRecords('brokerPayments'),
+                        getAllRecords('pettyCash'),
+                        getAllRecords('revenue')
+                    ]);
+                    setData({ projects, materials, labor, brokerPayments, pettyCash, revenue });
+                } catch (error) {
+                    console.error('Error loading data:', error);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            // Calculate metrics
+            const metrics = useMemo(() => {
+                const totalMaterials = data.materials.reduce((sum, item) => sum + (item.totalCost || 0), 0);
+                const totalLabor = data.labor.reduce((sum, item) => sum + (item.payment || 0), 0);
+                const totalBroker = data.brokerPayments.reduce((sum, item) => sum + (item.amount || 0), 0);
+                const totalPettyCash = data.pettyCash.reduce((sum, item) => sum + (item.amount || 0), 0);
+                const totalCost = totalMaterials + totalLabor + totalBroker + totalPettyCash;
+                const totalRevenue = data.revenue.reduce((sum, item) => sum + (item.totalRevenue || 0), 0);
+                const profitLoss = totalRevenue - totalCost;
+                const activeProjects = data.projects.filter(p => p.status === 'Ongoing').length;
+                const completedProjects = data.projects.filter(p => p.status === 'Completed').length;
+
+                return {
+                    totalCost,
+                    totalRevenue,
+                    profitLoss,
+                    activeProjects,
+                    completedProjects,
+                    totalMaterials,
+                    totalLabor,
+                    totalBroker,
+                    totalPettyCash
+                };
+            }, [data]);
+
+            const tabs = [
+                { id: 'dashboard', label: 'Dashboard', icon: '📊' },
+                { id: 'projects', label: 'Project Info', icon: '📁' },
+                { id: 'materials', label: 'Materials', icon: '' },
+                { id: 'labor', label: 'Labor', icon: '👷' },
+                { id: 'broker', label: 'Broker Payments', icon: '💼' },
+                { id: 'pettyCash', label: 'Petty Cash', icon: '💰' },
+                { id: 'revenue', label: 'Revenue', icon: '💵' },
+                { id: 'summary', label: 'Summary', icon: '📈' }
+            ];
+
+            if (loading) {
+                return (
+                    <div className="min-h-screen flex items-center justify-center">
+                        <div className="text-center">
+                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+                            <p className="mt-4 text-gray-600">Loading Financial System...</p>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen flex">
+                    {/* Sidebar */}
+                    <div className="w-64 bg-white border-r border-gray-200 flex-shrink-0">
+                        <div className="p-6 border-b border-gray-200">
+                            <h1 className="text-xl font-bold text-gray-800">FinManage Pro</h1>
+                            <p className="text-sm text-gray-500 mt-1">Electrical Engineering</p>
+                        </div>
+                        <nav className="p-4">
+                            {tabs.map(tab => (
+                                <div
+                                    key={tab.id}
+                                    className={`nav-item mb-2 flex items-center gap-3 ${activeTab === tab.id ? 'active' : ''}`}
+                                    onClick={() => setActiveTab(tab.id)}
+                                >
+                                    <span>{tab.icon}</span>
+                                    <span>{tab.label}</span>
+                                </div>
+                            ))}
+                        </nav>
+                        <div className="p-4 mt-auto border-t border-gray-200">
+                            <button
+                                className="retool-btn-secondary w-full text-sm"
+                                onClick={() => exportToExcel(data)}
+                            >
+                                📥 Export to Excel
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Main Content */}
+                    <div className="flex-1 overflow-auto">
+                        <div className="p-8">
+                            {activeTab === 'dashboard' && <Dashboard metrics={metrics} data={data} />}
+                            {activeTab === 'projects' && <Projects data={data} setData={setData} loadAllData={loadAllData} />}
+                            {activeTab === 'materials' && <Materials data={data} setData={setData} loadAllData={loadAllData} />}
+                            {activeTab === 'labor' && <Labor data={data} setData={setData} loadAllData={loadAllData} />}
+                            {activeTab === 'broker' && <BrokerPayments data={data} setData={setData} loadAllData={loadAllData} />}
+                            {activeTab === 'pettyCash' && <PettyCash data={data} setData={setData} loadAllData={loadAllData} />}
+                            {activeTab === 'revenue' && <Revenue data={data} setData={setData} loadAllData={loadAllData} />}
+                            {activeTab === 'summary' && <Summary metrics={metrics} data={data} />}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Dashboard Component
+        function Dashboard({ metrics, data }) {
+            return (
+                <div>
+                    <h2 className="text-2xl font-bold text-gray-800 mb-6">Dashboard</h2>
+                    
+                    {/* Metrics Cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+                        <div className="metric-card">
+                            <p className="text-sm opacity-90">Total Revenue</p>
+                            <p className="text-2xl font-bold mt-2">{formatCurrency(metrics.totalRevenue)}</p>
+                        </div>
+                        <div className="metric-card">
+                            <p className="text-sm opacity-90">Total Cost</p>
+                            <p className="text-2xl font-bold mt-2">{formatCurrency(metrics.totalCost)}</p>
+                        </div>
+                        <div className={`metric-card ${metrics.profitLoss >= 0 ? '' : 'bg-gradient-to-r from-red-500 to-red-600'}`}>
+                            <p className="text-sm opacity-90">Profit/Loss</p>
+                            <p className="text-2xl font-bold mt-2">{formatCurrency(metrics.profitLoss)}</p>
+                        </div>
+                        <div className="metric-card-secondary">
+                            <p className="text-sm opacity-90">Active Projects</p>
+                            <p className="text-2xl font-bold mt-2">{metrics.activeProjects}</p>
+                        </div>
+                        <div className="metric-card-secondary">
+                            <p className="text-sm opacity-90">Completed Projects</p>
+                            <p className="text-2xl font-bold mt-2">{metrics.completedProjects}</p>
+                        </div>
+                    </div>
+
+                    {/* Cost Breakdown */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div className="retool-card p-6">
+                            <h3 className="text-lg font-semibold text-gray-800 mb-4">Cost Breakdown</h3>
+                            <div className="space-y-4">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-gray-600">Materials</span>
+                                    <span className="font-semibold">{formatCurrency(metrics.totalMaterials)}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-gray-600">Labor</span>
+                                    <span className="font-semibold">{formatCurrency(metrics.totalLabor)}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-gray-600">Broker Payments</span>
+                                    <span className="font-semibold">{formatCurrency(metrics.totalBroker)}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-gray-600">Petty Cash</span>
+                                    <span className="font-semibold">{formatCurrency(metrics.totalPettyCash)}</span>
+                                </div>
+                                <div className="border-t pt-4 flex justify-between items-center font-bold">
+                                    <span className="text-gray-800">Total Cost</span>
+                                    <span className="text-blue-600">{formatCurrency(metrics.totalCost)}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="retool-card p-6">
+                            <h3 className="text-lg font-semibold text-gray-800 mb-4">Recent Projects</h3>
+                            <div className="space-y-3">
+                                {data.projects.slice(0, 5).map(project => (
+                                    <div key={project.id} className="flex justify-between items-center py-2 border-b border-gray-100">
+                                        <div>
+                                            <p className="font-medium text-gray-800">{project.projectName}</p>
+                                            <p className="text-sm text-gray-500">{project.clientName}</p>
+                                        </div>
+                                        <span className={`status-badge ${project.status === 'Ongoing' ? 'status-ongoing' : 'status-completed'}`}>
+                                            {project.status}
+                                        </span>
+                                    </div>
+                                ))}
+                                {data.projects.length === 0 && (
+                                    <p className="text-gray-500 text-center py-4">No projects yet</p>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Projects Component
+        function Projects({ data, setData, loadAllData }) {
+            const [showForm, setShowForm] = useState(false);
+            const [editingId, setEditingId] = useState(null);
+            const [formData, setFormData] = useState({
+                projectId: '',
+                projectName: '',
+                clientName: '',
+                location: '',
+                projectType: 'New',
+                startDate: '',
+                completionDate: '',
+                status: 'Ongoing',
+                documentLink: ''
+            });
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                try {
+                    if (editingId) {
+                        await updateRecord('projects', { ...formData, id: editingId });
+                    } else {
+                        const newRecord = { ...formData, projectId: generateProjectId() };
+                        await addRecord('projects', newRecord);
+                    }
+                    await loadAllData();
+                    setShowForm(false);
+                    setEditingId(null);
+                    resetForm();
+                } catch (error) {
+                    console.error('Error saving project:', error);
+                    alert('Error saving project. Please try again.');
+                }
+            };
+
+            const handleEdit = (project) => {
+                setFormData(project);
+                setEditingId(project.id);
+                setShowForm(true);
+            };
+
+            const handleDelete = async (id) => {
+                if (confirm('Are you sure you want to delete this project?')) {
+                    try {
+                        await deleteRecord('projects', id);
+                        await loadAllData();
+                    } catch (error) {
+                        console.error('Error deleting project:', error);
+                    }
+                }
+            };
+
+            const resetForm = () => {
+                setFormData({
+                    projectId: '',
+                    projectName: '',
+                    clientName: '',
+                    location: '',
+                    projectType: 'New',
+                    startDate: '',
+                    completionDate: '',
+                    status: 'Ongoing',
+                    documentLink: ''
+                });
+            };
+
+            return (
+                <div>
+                    <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-2xl font-bold text-gray-800">Project Info</h2>
+                        <button className="retool-btn-primary" onClick={() => { setShowForm(true); resetForm(); }}>
+                            + Add Project
+                        </button>
+                    </div>
+
+                    {showForm && (
+                        <div className="retool-card p-6 mb-6">
+                            <h3 className="text-lg font-semibold mb-4">{editingId ? 'Edit Project' : 'New Project'}</h3>
+                            <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <input
+                                    type="text"
+                                    placeholder="Project Name"
+                                    className="retool-input"
+                                    value={formData.projectName}
+                                    onChange={(e) => setFormData({ ...formData, projectName: e.target.value })}
+                                    required
+                                />
+                                <input
+                                    type="text"
+                                    placeholder="Client Name"
+                                    className="retool-input"
+                                    value={formData.clientName}
+                                    onChange={(e) => setFormData({ ...formData, clientName: e.target.value })}
+                                    required
+                                />
+                                <input
+                                    type="text"
+                                    placeholder="Location"
+                                    className="retool-input"
+                                    value={formData.location}
+                                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                                />
+                                <select
+                                    className="retool-input"
+                                    value={formData.projectType}
+                                    onChange={(e) => setFormData({ ...formData, projectType: e.target.value })}
+                                >
+                                    <option value="New">New</option>
+                                    <option value="Maintenance">Maintenance</option>
+                                </select>
+                                <input
+                                    type="date"
+                                    className="retool-input"
+                                    value={formData.startDate}
+                                    onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                                />
+                                <input
+                                    type="date"
+                                    className="retool-input"
+                                    value={formData.completionDate}
+                                    onChange={(e) => setFormData({ ...formData, completionDate: e.target.value })}
+                                />
+                                <select
+                                    className="retool-input"
+                                    value={formData.status}
+                                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                                >
+                                    <option value="Ongoing">Ongoing</option>
+                                    <option value="Completed">Completed</option>
+                                </select>
+                                <input
+                                    type="url"
+                                    placeholder="Document Link"
+                                    className="retool-input"
+                                    value={formData.documentLink}
+                                    onChange={(e) => setFormData({ ...formData, documentLink: e.target.value })}
+                                />
+                                <div className="flex gap-2">
+                                    <button type="submit" className="retool-btn-primary">
+                                        {editingId ? 'Update' : 'Save'}
+                                    </button>
+                                    <button type="button" className="retool-btn-secondary" onClick={() => setShowForm(false)}>
+                                        Cancel
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    )}
+
+                    <div className="retool-card overflow-hidden">
+                        <table className="w-full">
+                            <thead className="table-header">
+                                <tr>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Project ID</th>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Project Name</th>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Client</th>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Type</th>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Start Date</th>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Status</th>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {data.projects.map(project => (
+                                    <tr key={project.id} className="table-row border-b border-gray-100">
+                                        <td className="px-4 py-3 text-sm font-mono text-gray-600">{project.projectId}</td>
+                                        <td className="px-4 py-3 text-sm text-gray-800">{project.projectName}</td>
+                                        <td className="px-4 py-3 text-sm text-gray-600">{project.clientName}</td>
+                                        <td className="px-4 py-3 text-sm text-gray-600">{project.projectType}</td>
+                                        <td className="px-4 py-3 text-sm text-gray-600">{formatDate(project.startDate)}</td>
+                                        <td className="px-4 py-3">
+                                            <span className={`status-badge ${project.status === 'Ongoing' ? 'status-ongoing' : 'status-completed'}`}>
+                                                {project.status}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <div className="flex gap-2">
+                                                <button className="text-blue-600 hover:text-blue-800 text-sm" onClick={() => handleEdit(project)}>Edit</button>
+                                                <button className="text-red-600 hover:text-red-800 text-sm" onClick={() => handleDelete(project.id)}>Delete</button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                                {data.projects.length === 0 && (
+                                    <tr>
+                                        <td colSpan="7" className="px-4 py-8 text-center text-gray-500">No projects found. Add your first project above.</td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        }
+
+        // Materials Component
+        function Materials({ data, setData, loadAllData }) {
+            const [showForm, setShowForm] = useState(false);
+            const [editingId, setEditingId] = useState(null);
+            const [formData, setFormData] = useState({
+                projectId: '',
+                itemName: '',
+                quantity: 1,
+                unitCost: 0,
+                totalCost: 0,
+                receiptLink: ''
+            });
+
+            useEffect(() => {
+                const qty = parseFloat(formData.quantity) || 0;
+                const cost = parseFloat(formData.unitCost) || 0;
+                setFormData(prev => ({ ...prev, totalCost: qty * cost }));
+            }, [formData.quantity, formData.unitCost]);
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                try {
+                    if (editingId) {
+                        await updateRecord('materials', { ...formData, id: editingId });
+                    } else {
+                        await addRecord('materials', formData);
+                    }
+                    await loadAllData();
+                    setShowForm(false);
+                    setEditingId(null);
+                    resetForm();
+                } catch (error) {
+                    console.error('Error saving material:', error);
+                }
+            };
+
+            const handleEdit = (item) => {
+                setFormData(item);
+                setEditingId(item.id);
+                setShowForm(true);
+            };
+
+            const handleDelete = async (id) => {
+                if (confirm('Are you sure you want to delete this item?')) {
+                    try {
+                        await deleteRecord('materials', id);
+                        await loadAllData();
+                    } catch (error) {
+                        console.error('Error deleting material:', error);
+                    }
+                }
+            };
+
+            const resetForm = () => {
+                setFormData({
+                    projectId: '',
+                    itemName: '',
+                    quantity: 1,
+                    unitCost: 0,
+                    totalCost: 0,
+                    receiptLink: ''
+                });
+            };
+
+            return (
+                <div>
+                    <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-2xl font-bold text-gray-800">Materials</h2>
+                        <button className="retool-btn-primary" onClick={() => { setShowForm(true); resetForm(); }}>
+                            + Add Material
+                        </button>
+                    </div>
+
+                    {showForm && (
+                        <div className="retool-card p-6 mb-6">
+                            <h3 className="text-lg font-semibold mb-4">{editingId ? 'Edit Material' : 'New Material'}</h3>
+                            <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <select
+                                    className="retool-input"
+                                    value={formData.projectId}
+                                    onChange={(e) => setFormData({ ...formData, projectId: e.target.value })}
+                                    required
+                                >
+                                    <option value="">Select Project</option>
+                                    {data.projects.map(p => (
+                                        <option key={p.id} value={p.projectId}>{p.projectId} - {p.projectName}</option>
+                                    ))}
+                                </select>
+                                <input
+                                    type="text"
+                                    placeholder="Item Name"
+                                    className="retool-input"
+                                    value={formData.itemName}
+                                    onChange={(e) => setFormData({ ...formData, itemName: e.target.value })}
+                                    required
+                                />
+                                <input
+                                    type="number"
+                                    placeholder="Quantity"
+                                    className="retool-input"
+                                    value={formData.quantity}
+                                    onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+                                    min="0"
+                                    step="0.01"
+                                    required
+                                />
+                                <input
+                                    type="number"
+                                    placeholder="Unit Cost"
+                                    className="retool-input"
+                                    value={formData.unitCost}
+                                    onChange={(e) => setFormData({ ...formData, unitCost: e.target.value })}
+                                    min="0"
+                                    step="0.01"
+                                    required
+                                />
+                                <div className="retool-input bg-gray-50 font-semibold">
+                                    Total: {formatCurrency(formData.totalCost)}
+                                </div>
+                                <input
+                                    type="url"
+                                    placeholder="Receipt Link"
+                                    className="retool-input"
+                                    value={formData.receiptLink}
+                                    onChange={(e) => setFormData({ ...formData, receiptLink: e.target.value })}
+                                />
+                                <div className="flex gap-2">
+                                    <button type="submit" className="retool-btn-primary">
+                                        {editingId ? 'Update' : 'Save'}
+                                    </button>
+                                    <button type="button" className="retool-btn-secondary" onClick={() => setShowForm(false)}>
+                                        Cancel
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    )}
+
+                    <div className="retool-card overflow-hidden">
+                        <table className="w-full">
+                            <thead className="table-header">
+                                <tr>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Project ID</th>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Item Name</th>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Quantity</th>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Unit Cost</th>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Total Cost</th>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {data.materials.map(item => (
+                                    <tr key={item.id} className="table-row border-b border-gray-100">
+                                        <td className="px-4 py-3 text-sm font-mono text-gray-600">{item.projectId}</td>
+                                        <td className="px-4 py-3 text-sm text-gray-800">{item.itemName}</td>
+                                        <td className="px-4 py-3 text-sm text-gray-600">{item.quantity}</td>
+                                        <td className="px-4 py-3 text-sm text-gray-600">{formatCurrency(item.unitCost)}</td>
+                                        <td className="px-4 py-3 text-sm font-semibold text-gray-800">{formatCurrency(item.totalCost)}</td>
+                                        <td className="px-4 py-3">
+                                            <div className="flex gap-2">
+                                                <button className="text-blue-600 hover:text-blue-800 text-sm" onClick={() => handleEdit(item)}>Edit</button>
+                                                <button className="text-red-600 hover:text-red-800 text-sm" onClick={() => handleDelete(item.id)}>Delete</button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                                {data.materials.length === 0 && (
+                                    <tr>
+                                        <td colSpan="6" className="px-4 py-8 text-center text-gray-500">No materials found.</td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        }
+
+        // Labor Component
+        function Labor({ data, setData, loadAllData }) {
+            const [showForm, setShowForm] = useState(false);
+            const [editingId, setEditingId] = useState(null);
+            const [formData, setFormData] = useState({
+                projectId: '',
+                staffId: '',
+                workerName: '',
+                role: '',
+                payment: 0,
+                receiptLink: ''
+            });
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                try {
+                    if (editingId) {
+                        await updateRecord('labor', { ...formData, id: editingId });
+                    } else {
+                        await addRecord('labor', formData);
+                    }
+                    await loadAllData();
+                    setShowForm(false);
+                    setEditingId(null);
+                    resetForm();
+                } catch (error) {
+                    console.error('Error saving labor:', error);
+                }
+            };
+
+            const handleEdit = (item) => {
+                setFormData(item);
+                setEditingId(item.id);
+                setShowForm(true);
+            };
+
+            const handleDelete = async (id) => {
+                if (confirm('Are you sure you want to delete this record?')) {
+                    try {
+                        await deleteRecord('labor', id);
+                        await loadAllData();
+                    } catch (error) {
+                        console.error('Error deleting labor:', error);
+                    }
+                }
+            };
+
+            const resetForm = () => {
+                setFormData({
+                    projectId: '',
+                    staffId: '',
+                    workerName: '',
+                    role: '',
+                    payment: 0,
+                    receiptLink: ''
+                });
+            };
+
+            return (
+                <div>
+                    <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-2xl font-bold text-gray-800">Labor</h2>
+                        <button className="retool-btn-primary" onClick={() => { setShowForm(true); resetForm(); }}>
+                            + Add Labor
+                        </button>
+                    </div>
+
+                    {showForm && (
+                        <div className="retool-card p-6 mb-6">
+                            <h3 className="text-lg font-semibold mb-4">{editingId ? 'Edit Labor' : 'New Labor'}</h3>
+                            <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <select
+                                    className="retool-input"
+                                    value={formData.projectId}
+                                    onChange={(e) => setFormData({ ...formData, projectId: e.target.value })}
+                                    required
+                                >
+                                    <option value="">Select Project</option>
+                                    {data.projects.map(p => (
+                                        <option key={p.id} value={p.projectId}>{p.projectId} - {p.projectName}</option>
+                                    ))}
+                                </select>
+                                <input
+                                    type="text"
+                                    placeholder="Staff ID"
+                                    className="retool-input"
+                                    value={formData.staffId}
+                                    onChange={(e) => setFormData({ ...formData, staffId: e.target.value })}
+                                    required
+                                />
+                                <input
+                                    type="text"
+                                    placeholder="Worker Name"
+                                    className="retool-input"
+                                    value={formData.workerName}
+                                    onChange={(e) => setFormData({ ...formData, workerName: e.target.value })}
+                                    required
+                                />
+                                <input
+                                    type="text"
+                                    placeholder="Role"
+                                    className="retool-input"
+                                    value={formData.role}
+                                    onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                                />
+                                <input
+                                    type="number"
+                                    placeholder="Payment"
+                                    className="retool-input"
+                                    value={formData.payment}
+                                    onChange={(e) => setFormData({ ...formData, payment: e.target.value })}
+                                    min="0"
+                                    step="0.01"
+                                    required
+                                />
+                                <input
+                                    type="url"
+                                    placeholder="Receipt Link"
+                                    className="retool-input"
+                                    value={formData.receiptLink}
+                                    onChange={(e) => setFormData({ ...formData, receiptLink: e.target.value })}
+                                />
+                                <div className="flex gap-2">
+                                    <button type="submit" className="retool-btn-primary">
+                                        {editingId ? 'Update' : 'Save'}
+                                    </button>
+                                    <button type="button" className="retool-btn-secondary" onClick={() => setShowForm(false)}>
+                                        Cancel
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    )}
+
+                    <div className="retool-card overflow-hidden">
+                        <table className="w-full">
+                            <thead className="table-header">
+                                <tr>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Project ID</th>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Staff ID</th>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Worker Name</th>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Role</th>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Payment</th>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {data.labor.map(item => (
+                                    <tr key={item.id} className="table-row border-b border-gray-100">
+                                        <td className="px-4 py-3 text-sm font-mono text-gray-600">{item.projectId}</td>
+                                        <td className="px-4 py-3 text-sm text-gray-600">{item.staffId}</td>
+                                        <td className="px-4 py-3 text-sm text-gray-800">{item.workerName}</td>
+                                        <td className="px-4 py-3 text-sm text-gray-600">{item.role}</td>
+                                        <td className="px-4 py-3 text-sm font-semibold text-gray-800">{formatCurrency(item.payment)}</td>
+                                        <td className="px-4 py-3">
+                                            <div className="flex gap-2">
+                                                <button className="text-blue-600 hover:text-blue-800 text-sm" onClick={() => handleEdit(item)}>Edit</button>
+                                                <button className="text-red-600 hover:text-red-800 text-sm" onClick={() => handleDelete(item.id)}>Delete</button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                                {data.labor.length === 0 && (
+                                    <tr>
+                                        <td colSpan="6" className="px-4 py-8 text-center text-gray-500">No labor records found.</td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        }
+
+        // Broker Payments Component
+        function BrokerPayments({ data, setData, loadAllData }) {
+            const [showForm, setShowForm] = useState(false);
+            const [editingId, setEditingId] = useState(null);
+            const [formData, setFormData] = useState({
+                projectId: '',
+                brokerId: '',
+                brokerName: '',
+                amount: 0,
+                paymentDate: '',
+                proofLink: ''
+            });
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                try {
+                    if (editingId) {
+                        await updateRecord('brokerPayments', { ...formData, id: editingId });
+                    } else {
+                        await addRecord('brokerPayments', formData);
+                    }
+                    await loadAllData();
+                    setShowForm(false);
+                    setEditingId(null);
+                    resetForm();
+                } catch (error) {
+                    console.error('Error saving broker payment:', error);
+                }
+            };
+
+            const handleEdit = (item) => {
+                setFormData(item);
+                setEditingId(item.id);
+                setShowForm(true);
+            };
+
+            const handleDelete = async (id) => {
+                if (confirm('Are you sure you want to delete this record?')) {
+                    try {
+                        await deleteRecord('brokerPayments', id);
+                        await loadAllData();
+                    } catch (error) {
+                        console.error('Error deleting broker payment:', error);
+                    }
+                }
+            };
+
+            const resetForm = () => {
+                setFormData({
+                    projectId: '',
+                    brokerId: '',
+                    brokerName: '',
+                    amount: 0,
+                    paymentDate: '',
+                    proofLink: ''
+                });
+            };
+
+            return (
+                <div>
+                    <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-2xl font-bold text-gray-800">Broker Payments</h2>
+                        <button className="retool-btn-primary" onClick={() => { setShowForm(true); resetForm(); }}>
+                            + Add Payment
+                        </button>
+                    </div>
+
+                    {showForm && (
+                        <div className="retool-card p-6 mb-6">
+                            <h3 className="text-lg font-semibold mb-4">{editingId ? 'Edit Payment' : 'New Payment'}</h3>
+                            <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <select
+                                    className="retool-input"
+                                    value={formData.projectId}
+                                    onChange={(e) => setFormData({ ...formData, projectId: e.target.value })}
+                                    required
+                                >
+                                    <option value="">Select Project</option>
+                                    {data.projects.map(p => (
+                                        <option key={p.id} value={p.projectId}>{p.projectId} - {p.projectName}</option>
+                                    ))}
+                                </select>
+                                <input
+                                    type="text"
+                                    placeholder="Broker ID"
+                                    className="retool-input"
+                                    value={formData.brokerId}
+                                    onChange={(e) => setFormData({ ...formData, brokerId: e.target.value })}
+                                    required
+                                />
+                                <input
+                                    type="text"
+                                    placeholder="Broker Name"
+                                    className="retool-input"
+                                    value={formData.brokerName}
+                                    onChange={(e) => setFormData({ ...formData, brokerName: e.target.value })}
+                                    required
+                                />
+                                <input
+                                    type="number"
+                                    placeholder="Amount"
+                                    className="retool-input"
+                                    value={formData.amount}
+                                    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                                    min="0"
+                                    step="0.01"
+                                    required
+                                />
+                                <input
+                                    type="date"
+                                    className="retool-input"
+                                    value={formData.paymentDate}
+                                    onChange={(e) => setFormData({ ...formData, paymentDate: e.target.value })}
+                                />
+                                <input
+                                    type="url"
+                                    placeholder="Proof Link"
+                                    className="retool-input"
+                                    value={formData.proofLink}
+                                    onChange={(e) => setFormData({ ...formData, proofLink: e.target.value })}
+                                />
+                                <div className="flex gap-2">
+                                    <button type="submit" className="retool-btn-primary">
+                                        {editingId ? 'Update' : 'Save'}
+                                    </button>
+                                    <button type="button" className="retool-btn-secondary" onClick={() => setShowForm(false)}>
+                                        Cancel
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    )}
+
+                    <div className="retool-card overflow-hidden">
+                        <table className="w-full">
+                            <thead className="table-header">
+                                <tr>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Project ID</th>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Broker ID</th>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Broker Name</th>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Amount</th>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Payment Date</th>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {data.brokerPayments.map(item => (
+                                    <tr key={item.id} className="table-row border-b border-gray-100">
+                                        <td className="px-4 py-3 text-sm font-mono text-gray-600">{item.projectId}</td>
+                                        <td className="px-4 py-3 text-sm text-gray-600">{item.brokerId}</td>
+                                        <td className="px-4 py-3 text-sm text-gray-800">{item.brokerName}</td>
+                                        <td className="px-4 py-3 text-sm font-semibold text-gray-800">{formatCurrency(item.amount)}</td>
+                                        <td className="px-4 py-3 text-sm text-gray-600">{formatDate(item.paymentDate)}</td>
+                                        <td className="px-4 py-3">
+                                            <div className="flex gap-2">
+                                                <button className="text-blue-600 hover:text-blue-800 text-sm" onClick={() => handleEdit(item)}>Edit</button>
+                                                <button className="text-red-600 hover:text-red-800 text-sm" onClick={() => handleDelete(item.id)}>Delete</button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                                {data.brokerPayments.length === 0 && (
+                                    <tr>
+                                        <td colSpan="6" className="px-4 py-8 text-center text-gray-500">No broker payments found.</td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        }
+
+        // Petty Cash Component
+        function PettyCash({ data, setData, loadAllData }) {
+            const [showForm, setShowForm] = useState(false);
+            const [editingId, setEditingId] = useState(null);
+            const [formData, setFormData] = useState({
+                projectId: '',
+                date: '',
+                description: '',
+                category: 'General',
+                amount: 0,
+                receiptLink: ''
+            });
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                try {
+                    if (editingId) {
+                        await updateRecord('pettyCash', { ...formData, id: editingId });
+                    } else {
+                        await addRecord('pettyCash', formData);
+                    }
+                    await loadAllData();
+                    setShowForm(false);
+                    setEditingId(null);
+                    resetForm();
+                } catch (error) {
+                    console.error('Error saving petty cash:', error);
+                }
+            };
+
+            const handleEdit = (item) => {
+                setFormData(item);
+                setEditingId(item.id);
+                setShowForm(true);
+            };
+
+            const handleDelete = async (id) => {
+                if (confirm('Are you sure you want to delete this record?')) {
+                    try {
+                        await deleteRecord('pettyCash', id);
+                        await loadAllData();
+                    } catch (error) {
+                        console.error('Error deleting petty cash:', error);
+                    }
+                }
+            };
+
+            const resetForm = () => {
+                setFormData({
+                    projectId: '',
+                    date: '',
+                    description: '',
+                    category: 'General',
+                    amount: 0,
+                    receiptLink: ''
+                });
+            };
+
+            return (
+                <div>
+                    <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-2xl font-bold text-gray-800">Petty Cash</h2>
+                        <button className="retool-btn-primary" onClick={() => { setShowForm(true); resetForm(); }}>
+                            + Add Entry
+                        </button>
+                    </div>
+
+                    {showForm && (
+                        <div className="retool-card p-6 mb-6">
+                            <h3 className="text-lg font-semibold mb-4">{editingId ? 'Edit Entry' : 'New Entry'}</h3>
+                            <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <select
+                                    className="retool-input"
+                                    value={formData.projectId}
+                                    onChange={(e) => setFormData({ ...formData, projectId: e.target.value })}
+                                    required
+                                >
+                                    <option value="">Select Project</option>
+                                    {data.projects.map(p => (
+                                        <option key={p.id} value={p.projectId}>{p.projectId} - {p.projectName}</option>
+                                    ))}
+                                </select>
+                                <input
+                                    type="date"
+                                    className="retool-input"
+                                    value={formData.date}
+                                    onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                                />
+                                <input
+                                    type="text"
+                                    placeholder="Description"
+                                    className="retool-input"
+                                    value={formData.description}
+                                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                                    required
+                                />
+                                <select
+                                    className="retool-input"
+                                    value={formData.category}
+                                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                                >
+                                    <option value="General">General</option>
+                                    <option value="Transport">Transport</option>
+                                    <option value="Meals">Meals</option>
+                                    <option value="Supplies">Supplies</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                                <input
+                                    type="number"
+                                    placeholder="Amount"
+                                    className="retool-input"
+                                    value={formData.amount}
+                                    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                                    min="0"
+                                    step="0.01"
+                                    required
+                                />
+                                <input
+                                    type="url"
+                                    placeholder="Receipt Link"
+                                    className="retool-input"
+                                    value={formData.receiptLink}
+                                    onChange={(e) => setFormData({ ...formData, receiptLink: e.target.value })}
+                                />
+                                <div className="flex gap-2">
+                                    <button type="submit" className="retool-btn-primary">
+                                        {editingId ? 'Update' : 'Save'}
+                                    </button>
+                                    <button type="button" className="retool-btn-secondary" onClick={() => setShowForm(false)}>
+                                        Cancel
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    )}
+
+                    <div className="retool-card overflow-hidden">
+                        <table className="w-full">
+                            <thead className="table-header">
+                                <tr>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Project ID</th>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Date</th>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Description</th>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Category</th>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Amount</th>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {data.pettyCash.map(item => (
+                                    <tr key={item.id} className="table-row border-b border-gray-100">
+                                        <td className="px-4 py-3 text-sm font-mono text-gray-600">{item.projectId}</td>
+                                        <td className="px-4 py-3 text-sm text-gray-600">{formatDate(item.date)}</td>
+                                        <td className="px-4 py-3 text-sm text-gray-800">{item.description}</td>
+                                        <td className="px-4 py-3 text-sm text-gray-600">{item.category}</td>
+                                        <td className="px-4 py-3 text-sm font-semibold text-gray-800">{formatCurrency(item.amount)}</td>
+                                        <td className="px-4 py-3">
+                                            <div className="flex gap-2">
+                                                <button className="text-blue-600 hover:text-blue-800 text-sm" onClick={() => handleEdit(item)}>Edit</button>
+                                                <button className="text-red-600 hover:text-red-800 text-sm" onClick={() => handleDelete(item.id)}>Delete</button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                                {data.pettyCash.length === 0 && (
+                                    <tr>
+                                        <td colSpan="6" className="px-4 py-8 text-center text-gray-500">No petty cash entries found.</td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        }
+
+        // Revenue Component
+        function Revenue({ data, setData, loadAllData }) {
+            const [showForm, setShowForm] = useState(false);
+            const [editingId, setEditingId] = useState(null);
+            const [formData, setFormData] = useState({
+                projectId: '',
+                totalRevenue: 0,
+                amountReceived: 0,
+                outstanding: 0,
+                proofLink: ''
+            });
+
+            useEffect(() => {
+                const total = parseFloat(formData.totalRevenue) || 0;
+                const received = parseFloat(formData.amountReceived) || 0;
+                setFormData(prev => ({ ...prev, outstanding: total - received }));
+            }, [formData.totalRevenue, formData.amountReceived]);
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                try {
+                    if (editingId) {
+                        await updateRecord('revenue', { ...formData, id: editingId });
+                    } else {
+                        await addRecord('revenue', formData);
+                    }
+                    await loadAllData();
+                    setShowForm(false);
+                    setEditingId(null);
+                    resetForm();
+                } catch (error) {
+                    console.error('Error saving revenue:', error);
+                }
+            };
+
+            const handleEdit = (item) => {
+                setFormData(item);
+                setEditingId(item.id);
+                setShowForm(true);
+            };
+
+            const handleDelete = async (id) => {
+                if (confirm('Are you sure you want to delete this record?')) {
+                    try {
+                        await deleteRecord('revenue', id);
+                        await loadAllData();
+                    } catch (error) {
+                        console.error('Error deleting revenue:', error);
+                    }
+                }
+            };
+
+            const resetForm = () => {
+                setFormData({
+                    projectId: '',
+                    totalRevenue: 0,
+                    amountReceived: 0,
+                    outstanding: 0,
+                    proofLink: ''
+                });
+            };
+
+            return (
+                <div>
+                    <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-2xl font-bold text-gray-800">Revenue</h2>
+                        <button className="retool-btn-primary" onClick={() => { setShowForm(true); resetForm(); }}>
+                            + Add Revenue
+                        </button>
+                    </div>
+
+                    {showForm && (
+                        <div className="retool-card p-6 mb-6">
+                            <h3 className="text-lg font-semibold mb-4">{editingId ? 'Edit Revenue' : 'New Revenue'}</h3>
+                            <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <select
+                                    className="retool-input"
+                                    value={formData.projectId}
+                                    onChange={(e) => setFormData({ ...formData, projectId: e.target.value })}
+                                    required
+                                >
+                                    <option value="">Select Project</option>
+                                    {data.projects.map(p => (
+                                        <option key={p.id} value={p.projectId}>{p.projectId} - {p.projectName}</option>
+                                    ))}
+                                </select>
+                                <input
+                                    type="number"
+                                    placeholder="Total Revenue"
+                                    className="retool-input"
+                                    value={formData.totalRevenue}
+                                    onChange={(e) => setFormData({ ...formData, totalRevenue: e.target.value })}
+                                    min="0"
+                                    step="0.01"
+                                    required
+                                />
+                                <input
+                                    type="number"
+                                    placeholder="Amount Received"
+                                    className="retool-input"
+                                    value={formData.amountReceived}
+                                    onChange={(e) => setFormData({ ...formData, amountReceived: e.target.value })}
+                                    min="0"
+                                    step="0.01"
+                                    required
+                                />
+                                <div className="retool-input bg-gray-50 font-semibold">
+                                    Outstanding: {formatCurrency(formData.outstanding)}
+                                </div>
+                                <input
+                                    type="url"
+                                    placeholder="Proof Link"
+                                    className="retool-input"
+                                    value={formData.proofLink}
+                                    onChange={(e) => setFormData({ ...formData, proofLink: e.target.value })}
+                                />
+                                <div className="flex gap-2">
+                                    <button type="submit" className="retool-btn-primary">
+                                        {editingId ? 'Update' : 'Save'}
+                                    </button>
+                                    <button type="button" className="retool-btn-secondary" onClick={() => setShowForm(false)}>
+                                        Cancel
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    )}
+
+                    <div className="retool-card overflow-hidden">
+                        <table className="w-full">
+                            <thead className="table-header">
+                                <tr>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Project ID</th>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Total Revenue</th>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Amount Received</th>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Outstanding</th>
+                                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {data.revenue.map(item => (
+                                    <tr key={item.id} className="table-row border-b border-gray-100">
+                                        <td className="px-4 py-3 text-sm font-mono text-gray-600">{item.projectId}</td>
+                                        <td className="px-4 py-3 text-sm font-semibold text-gray-800">{formatCurrency(item.totalRevenue)}</td>
+                                        <td className="px-4 py-3 text-sm text-green-600">{formatCurrency(item.amountReceived)}</td>
+                                        <td className={`px-4 py-3 text-sm font-semibold ${item.outstanding > 0 ? 'text-red-600' : 'text-gray-600'}`}>
+                                            {formatCurrency(item.outstanding)}
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <div className="flex gap-2">
+                                                <button className="text-blue-600 hover:text-blue-800 text-sm" onClick={() => handleEdit(item)}>Edit</button>
+                                                <button className="text-red-600 hover:text-red-800 text-sm" onClick={() => handleDelete(item.id)}>Delete</button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                                {data.revenue.length === 0 && (
+                                    <tr>
+                                        <td colSpan="5" className="px-4 py-8 text-center text-gray-500">No revenue records found.</td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        }
+
+        // Summary Component
+        function Summary({ metrics, data }) {
+            const projectSummaries = useMemo(() => {
+                return data.projects.map(project => {
+                    const materials = data.materials
+                        .filter(m => m.projectId === project.projectId)
+                        .reduce((sum, m) => sum + (m.totalCost || 0), 0);
+                    const labor = data.labor
+                        .filter(l => l.projectId === project.projectId)
+                        .reduce((sum, l) => sum + (l.payment || 0), 0);
+                    const broker = data.brokerPayments
+                        .filter(b => b.projectId === project.projectId)
+                        .reduce((sum, b) => sum + (b.amount || 0), 0);
+                    const petty = data.pettyCash
+                        .filter(p => p.projectId === project.projectId)
+                        .reduce((sum, p) => sum + (p.amount || 0), 0);
+                    const totalCost = materials + labor + broker + petty;
+                    const revenue = data.revenue
+                        .find(r => r.projectId === project.projectId);
+                    const totalRevenue = revenue ? revenue.totalRevenue : 0;
+                    const profit = totalRevenue - totalCost;
+
+                    return {
+                        ...project,
+                        materials,
+                        labor,
+                        broker,
+                        petty,
+                        totalCost,
+                        totalRevenue,
+                        profit
+                    };
+                });
+            }, [data]);
+
+            return (
+                <div>
+                    <h2 className="text-2xl font-bold text-gray-800 mb-6">Summary</h2>
+
+                    {/* Overall Summary */}
+                    <div className="retool-card p-6 mb-6">
+                        <h3 className="text-lg font-semibold text-gray-800 mb-4">Overall Financial Summary</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                            <div className="text-center p-4 bg-blue-50 rounded-lg">
+                                <p className="text-sm text-gray-600">Total Materials</p>
+                                <p className="text-xl font-bold text-blue-600 mt-2">{formatCurrency(metrics.totalMaterials)}</p>
+                            </div>
+                            <div className="text-center p-4 bg-green-50 rounded-lg">
+                                <p className="text-sm text-gray-600">Total Labor</p>
+                                <p className="text-xl font-bold text-green-600 mt-2">{formatCurrency(metrics.totalLabor)}</p>
+                            </div>
+                            <div className="text-center p-4 bg-purple-50 rounded-lg">
+                                <p className="text-sm text-gray-600">Total Broker</p>
+                                <p className="text-xl font-bold text-purple-600 mt-2">{formatCurrency(metrics.totalBroker)}</p>
+                            </div>
+                            <div className="text-center p-4 bg-orange-50 rounded-lg">
+                                <p className="text-sm text-gray-600">Total Petty Cash</p>
+                                <p className="text-xl font-bold text-orange-600 mt-2">{formatCurrency(metrics.totalPettyCash)}</p>
+                            </div>
+                            <div className="text-center p-4 bg-gray-100 rounded-lg">
+                                <p className="text-sm text-gray-600">Total Project Cost</p>
+                                <p className="text-xl font-bold text-gray-800 mt-2">{formatCurrency(metrics.totalCost)}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Project-wise Summary */}
+                    <div className="retool-card overflow-hidden">
+                        <h3 className="text-lg font-semibold text-gray-800 p-4 border-b">Project-wise Breakdown</h3>
+                        <div className="overflow-x-auto">
+                            <table className="w-full">
+                                <thead className="table-header">
+                                    <tr>
+                                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Project</th>
+                                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Materials</th>
+                                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Labor</th>
+                                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Broker</th>
+                                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Petty Cash</th>
+                                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Total Cost</th>
+                                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Revenue</th>
+                                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Profit/Loss</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {projectSummaries.map(project => (
+                                        <tr key={project.id} className="table-row border-b border-gray-100">
+                                            <td className="px-4 py-3">
+                                                <p className="text-sm font-medium text-gray-800">{project.projectName}</p>
+                                                <p className="text-xs text-gray-500 font-mono">{project.projectId}</p>
+                                            </td>
+                                            <td className="px-4 py-3 text-sm text-gray-600">{formatCurrency(project.materials)}</td>
+                                            <td className="px-4 py-3 text-sm text-gray-600">{formatCurrency(project.labor)}</td>
+                                            <td className="px-4 py-3 text-sm text-gray-600">{formatCurrency(project.broker)}</td>
+                                            <td className="px-4 py-3 text-sm text-gray-600">{formatCurrency(project.petty)}</td>
+                                            <td className="px-4 py-3 text-sm font-semibold text-gray-800">{formatCurrency(project.totalCost)}</td>
+                                            <td className="px-4 py-3 text-sm font-semibold text-green-600">{formatCurrency(project.totalRevenue)}</td>
+                                            <td className={`px-4 py-3 text-sm font-bold ${project.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                {formatCurrency(project.profit)}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {projectSummaries.length === 0 && (
+                                        <tr>
+                                            <td colSpan="8" className="px-4 py-8 text-center text-gray-500">No projects to summarize.</td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Export to Excel function
+        const exportToExcel = (data) => {
+            const wb = XLSX.utils.book_new();
+            
+            // Projects sheet
+            const projectsData = data.projects.map(p => ({
+                'Project ID': p.projectId,
+                'Project Name': p.projectName,
+                'Client Name': p.clientName,
+                'Location': p.location,
+                'Project Type': p.projectType,
+                'Start Date': p.startDate,
+                'Completion Date': p.completionDate,
+                'Status': p.status,
+                'Document Link': p.documentLink
+            }));
+            const projectsWs = XLSX.utils.json_to_sheet(projectsData);
+            XLSX.utils.book_append_sheet(wb, projectsWs, 'Projects');
+
+            // Materials sheet
+            const materialsData = data.materials.map(m => ({
+                'Project ID': m.projectId,
+                'Item Name': m.itemName,
+                'Quantity': m.quantity,
+                'Unit Cost': m.unitCost,
+                'Total Cost': m.totalCost,
+                'Receipt Link': m.receiptLink
+            }));
+            const materialsWs = XLSX.utils.json_to_sheet(materialsData);
+            XLSX.utils.book_append_sheet(wb, materialsWs, 'Materials');
+
+            // Labor sheet
+            const laborData = data.labor.map(l => ({
+                'Project ID': l.projectId,
+                'Staff ID': l.staffId,
+                'Worker Name': l.workerName,
+                'Role': l.role,
+                'Payment': l.payment,
+                'Receipt Link': l.receiptLink
+            }));
+            const laborWs = XLSX.utils.json_to_sheet(laborData);
+            XLSX.utils.book_append_sheet(wb, laborWs, 'Labor');
+
+            // Broker Payments sheet
+            const brokerData = data.brokerPayments.map(b => ({
+                'Project ID': b.projectId,
+                'Broker ID': b.brokerId,
+                'Broker Name': b.brokerName,
+                'Amount': b.amount,
+                'Payment Date': b.paymentDate,
+                'Proof Link': b.proofLink
+            }));
+            const brokerWs = XLSX.utils.json_to_sheet(brokerData);
+            XLSX.utils.book_append_sheet(wb, brokerWs, 'Broker Payments');
+
+            // Petty Cash sheet
+            const pettyData = data.pettyCash.map(p => ({
+                'Project ID': p.projectId,
+                'Date': p.date,
+                'Description': p.description,
+                'Category': p.category,
+                'Amount': p.amount,
+                'Receipt Link': p.receiptLink
+            }));
+            const pettyWs = XLSX.utils.json_to_sheet(pettyData);
+            XLSX.utils.book_append_sheet(wb, pettyWs, 'Petty Cash');
+
+            // Revenue sheet
+            const revenueData = data.revenue.map(r => ({
+                'Project ID': r.projectId,
+                'Total Revenue': r.totalRevenue,
+                'Amount Received': r.amountReceived,
+                'Outstanding': r.outstanding,
+                'Proof Link': r.proofLink
+            }));
+            const revenueWs = XLSX.utils.json_to_sheet(revenueData);
+            XLSX.utils.book_append_sheet(wb, revenueWs, 'Revenue');
+
+            XLSX.writeFile(wb, 'Financial_Management_System.xlsx');
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
+
