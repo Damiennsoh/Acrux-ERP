@@ -49,7 +49,11 @@ interface AuthContextType extends AuthState {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // Helper to map staffId to a pseudo-email for Supabase Auth
-const getEmailFromStaffId = (staffId: string) => `${staffId.toLowerCase().replace(/[^a-z0-9]/g, '')}@glp-erp.local`;
+// Add timestamp to avoid rate limiting on repeated signups
+const getEmailFromStaffId = (staffId: string) => {
+  const timestamp = Date.now();
+  return `${staffId.toLowerCase().replace(/[^a-z0-9]/g, '')}+${timestamp}@glp-erp.local`;
+};
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({
