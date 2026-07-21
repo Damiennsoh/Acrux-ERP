@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { userDB } from '@/lib/user-db';
 import { supabase } from '@/lib/supabase';
+import { slugifyOrg } from '@/lib/utils/org';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -51,15 +52,27 @@ export default function AuthPage() {
   useEffect(() => {
     const checkInitialState = async () => {
       try {
-        // Check IndexedDB for admin users
-        const users = await userDB.getAllUsers();
-        const hasLocalAdmin = users.some(u => u.isAdmin === true);
+        // Check IndexedDB FIRST (source of truth when sync is broken)
+        const localUsers = await userDB.getAllUsers();
+        
+        // Get current organization slug from localStorage or use default
+        const currentOrgSlug = slugifyOrg(localStorage.getItem('organizationName') || 'ACRUX IT SOLUTIONS');
+        
+        const hasLocalAdmin = localUsers.some(u => 
+          u.isAdmin === true && 
+          slugifyOrg(u.organizationName || '') === currentOrgSlug
+        );
 
-        // Also check Supabase if online
+        // Only check remote if local is empty
         let hasRemoteAdmin = false;
-        if (navigator.onLine) {
+        if (navigator.onLine && !hasLocalAdmin) {
           try {
-            const { data } = await supabase.from('user_profiles').select('isAdmin').eq('isAdmin', true).limit(1);
+            const { data } = await supabase
+              .from('user_profiles')
+              .select('isAdmin')
+              .eq('isAdmin', true)
+              .eq('organizationName', currentOrgSlug) // Add org filter!
+              .limit(1);
             hasRemoteAdmin = data && data.length > 0;
           } catch (e) {
             console.error('Error checking Supabase for admin:', e);

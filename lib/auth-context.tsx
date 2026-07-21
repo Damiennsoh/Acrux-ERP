@@ -664,8 +664,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   
   const updateUserRole = async (userId: string, role: string) => { 
     await userDB.updateUser(userId, { role: role as any, isAdmin: role === 'admin' });
+    
     if (navigator.onLine) {
-       await supabase.from('user_profiles').update({ role: role, isAdmin: role === 'admin' }).eq('id', userId);
+      const { error } = await supabase
+        .from('user_profiles')
+        .update({ role: role, isAdmin: role === 'admin' })
+        .eq('id', userId);
+        
+      if (error) {
+        console.error('[AuthContext] Role update failed on Supabase:', error);
+        // Revert local change if remote fails
+        await userDB.updateUser(userId, { role: role === 'admin' ? 'user' : 'admin', isAdmin: role !== 'admin' });
+        throw new Error(`Failed to sync role change: ${error.message}`);
+      }
     }
     return { success: true }; 
   };

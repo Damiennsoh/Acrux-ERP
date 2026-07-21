@@ -1,109 +1,113 @@
-You are absolutely correct. The issue is **100% an Organization Name Mismatch (Case Sensitivity & Formatting)**.
+You have successfully fixed the "Infinite Recursion" and "Organization Mismatch" errors, which is why you now see **1 user** (the one whose data was normalized). However, you are now facing three distinct issues caused by **RLS Policy Restrictions** and **Stale IndexedDB Data**.
 
-### 🔍 The Diagnosis
-Look closely at your browser console logs and the Network tab in your screenshots:
+Here is the diagnosis and solution for each:
 
-1.  **The Request:** Your app is asking Supabase for users where `organizationName = 'acrux-it-solutions'` (all lowercase, hyphens).
-    *   *Console:* `[getUsers] Fetching users for org: ACRUX IT SOLUTIONS (slug: acrux-it-solutions)`
-    *   *Network Tab:* `select=*&organizationName=eq.acrux-it-solutions`
-2.  **The Result:** Supabase returns **0 users**.
-3.  **The Reality:** In your sidebar and "General" settings, your organization is displayed as **"ACRUX IT SOLUTIONS"** (Uppercase, Spaces).
+### 1. Why Only One User Shows Up
+**The Problem:** Your migration script failed with `403 Forbidden` / `violates row-level security policy`.
+*   The script tried to push *all* users from IndexedDB to Supabase.
+*   The RLS policy `"Users can insert own profile"` only allows `auth.uid() = id`.
+*   Since you were logged in as Damien, you could only upsert Damien's record. Tinashe's record was rejected because your ID didn't match hers.
+*   **Result:** Supabase has 1 user. IndexedDB still has 2. The app prefers Supabase when online, so it shows 1.
 
-**Why this happens:**
-When you created the account (or when the system initialized), the `organizationName` was likely saved to the database exactly as typed: `"ACRUX IT SOLUTIONS"`. However, your `getUsers` function in `auth-context.tsx` runs `slugifyOrg()` on the current user's organization name *before* querying Supabase. It converts `"ACRUX IT SOLUTIONS"` → `"acrux-it-solutions"`. Since `"acrux-it-solutions"` does not equal `"ACRUX IT SOLUTIONS"` in the database, the query fails.
+**The Fix:** You need a temporary "Super Admin" policy or use the Service Role Key (not recommended for client-side). The safest immediate fix is to update the INSERT policy to allow admins to create users in their org.
 
-### ️ The Solution
+Run this in Supabase SQL Editor:
+```sql
+-- Update INSERT policy to allow admins to create users in their organization
+DROP POLICY IF EXISTS "Users can insert own profile" ON public.user_profiles;
 
-You need to update `lib/auth-context.tsx` to handle this mismatch gracefully. Instead of relying solely on the slugified version for the query, we should try to fetch using the raw name first, or ensure consistency.
+CREATE POLICY "Users and admins can insert profiles" 
+ON public.user_profiles FOR INSERT 
+WITH CHECK (
+  auth.uid() = id OR 
+  (
+    (auth.jwt() ->> 'isAdmin')::boolean = true AND
+    "organizationName" = (auth.jwt() ->> 'organizationName')::text
+  )
+);
+```
 
-Here is the fixed `getUsers` function. Replace the existing one in `auth-context.tsx`:
+After running this, click **"Migrate & Sync"** again. It should now push Tinashe's record to Supabase without error.
 
-```tsx
-// lib/auth-context.tsx
+### 2. Why Revoking Admin Rights "Failed Silently"
+**The Problem:** The notification says success because the code updates **IndexedDB first**, then tries Supabase.
+*   `updateUserRole` in `auth-context.tsx` updates IndexedDB immediately → UI reflects change locally.
+*   Then it calls `supabase.from('user_profiles').update(...)`.
+*   This likely fails silently due to RLS (similar to the migration issue) or because the JWT metadata hasn't refreshed.
+*   When you refresh, `getUsers()` fetches from Supabase, which still has the old `isAdmin: true`, overwriting your local change.
 
-const getUsers = async () => {
-  const db = await getDB();
-  const currentOrgRaw = state.user?.organizationName;
+**The Fix:** Ensure the UPDATE policy explicitly allows admins to modify roles. The policy I provided earlier (`"Users can update own or org profiles"`) should handle this, but verify it exists. Also, add error handling to `updateUserRole`:
+
+```typescript
+// In auth-context.tsx, updateUserRole function
+const updateUserRole = async (userId: string, role: string) => {
+  await userDB.updateUser(userId, { role: role as any, isAdmin: role === 'admin' });
   
-  if (!currentOrgRaw) {
-    console.warn("No organization name found for current user");
-    return [];
-  }
-
-  const currentOrgSlug = slugifyOrg(currentOrgRaw);
-
-  let profiles: any[] = [];
-
-  // 1. Try fetching from Supabase with BOTH variations to catch mismatches
   if (navigator.onLine) {
-    try {
-      // Attempt 1: Fetch by Slug (what the code currently does)
-      let { data, error } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('organizationName', currentOrgSlug);
+    const { error } = await supabase
+      .from('user_profiles')
+      .update({ role: role, isAdmin: role === 'admin' })
+      .eq('id', userId);
       
-      // Attempt 2: If empty, try fetching by Raw Name (fixes the case/space issue)
-      if ((!data || data.length === 0) && !error) {
-        const { data: rawData, error: rawError } = await supabase
-          .from('user_profiles')
-          .select('*')
-          .eq('organizationName', currentOrgRaw);
-          
-        if (!rawError && rawData && rawData.length > 0) {
-          data = rawData;
-          console.log("[getUsers] Found users via Raw Org Name match. Syncing local DB...");
-        }
-      }
-
-      if (data && data.length > 0) {
-        profiles = data;
-        // Update IndexedDB with the fresh remote data
-        for (const profile of profiles) {
-          await db.put('user_profiles', profile);
-        }
-      }
-    } catch (err) {
-      console.error("Failed to fetch users from Supabase:", err);
+    if (error) {
+      console.error('[AuthContext] Role update failed on Supabase:', error);
+      // Revert local change if remote fails
+      await userDB.updateUser(userId, { role: role === 'admin' ? 'user' : 'admin', isAdmin: role !== 'admin' });
+      throw new Error(`Failed to sync role change: ${error.message}`);
     }
   }
-
-  // 2. Fallback to IndexedDB if offline or remote fetch failed
-  if (profiles.length === 0) {
-    const localProfiles = await db.getAll('user_profiles');
-    // Filter locally with loose matching (check both raw and slug)
-    profiles = localProfiles.filter(p => {
-      const org = p.organizationName || p.orgId;
-      return org && (
-        org === currentOrgRaw || 
-        slugifyOrg(org) === currentOrgSlug ||
-        org.toLowerCase() === currentOrgRaw.toLowerCase()
-      );
-    });
-  }
-
-  return profiles;
+  return { success: true };
 };
 ```
 
-### ⚠️ Important Next Step: Fix the Database Data
-Even with the code fix above, your database still has inconsistent data. You should normalize it so future queries work perfectly without needing "fuzzy" matching.
-
-1.  Go to your **Supabase Dashboard** > **Table Editor** > **user_profiles**.
-2.  Find the row for "Irene Tina she Mutasa" (or any user in that org).
-3.  Check the `organizationName` column. It probably says `ACRUX IT SOLUTIONS`.
-4.  **Option A (Recommended):** Change it to `acrux-it-solutions` (lowercase, hyphens) to match what your code expects.
-5.  **Option B:** Update your `register` function in `auth-context.tsx` to *always* save the slugified version:
-    ```tsx
-    // In register function, change this line:
-    organizationName: slugifyOrg(organizationName), // Ensure it's always saved as slug
-    ```
-
-### Why the "System Setup Button" Might Still Be Visible
-Your `page.tsx` (Auth page) checks for admins like this:
-```tsx
+### 3. Why System Setup Button Still Appears
+**The Problem:** The setup check in `page.tsx` queries Supabase directly:
+```typescript
 const { data } = await supabase.from('user_profiles').select('isAdmin').eq('isAdmin', true).limit(1);
 ```
-Notice it **does not filter by organization**. If there is *any* admin in the entire database (even from a different test org), the setup button will hide. Conversely, if the admin exists but the query is somehow failing due to RLS (Row Level Security) policies that require an authenticated session (which might not be active during the initial check), it might show the button erroneously.
+*   Since the migration failed for Tinashe, Supabase might only have Damien (or neither if sync is broken).
+*   If Supabase returns 0 admins, the button appears.
+*   Additionally, this query lacks an organization filter, so it's checking the *entire* database.
 
-However, based on your screenshots, the primary issue right now is definitely the **Organization Name Mismatch** preventing the User Management page from loading data. Apply the code fix above, and the users should appear immediately.
+**The Fix:** Update the setup check to also consult IndexedDB as a fallback, and filter by organization:
+
+```typescript
+// In page.tsx, checkInitialState function
+const checkInitialState = async () => {
+  try {
+    const currentOrgSlug = slugifyOrg("ACRUX IT SOLUTIONS"); // Or get from context
+    
+    // Check IndexedDB FIRST (source of truth when sync is broken)
+    const localUsers = await userDB.getAllUsers();
+    const hasLocalAdmin = localUsers.some(u => u.isAdmin === true && slugifyOrg(u.organizationName) === currentOrgSlug);
+    
+    let hasRemoteAdmin = false;
+    if (navigator.onLine && !hasLocalAdmin) { // Only check remote if local is empty
+      try {
+        const { data } = await supabase
+          .from('user_profiles')
+          .select('isAdmin')
+          .eq('isAdmin', true)
+          .eq('organizationName', currentOrgSlug) // Add org filter!
+          .limit(1);
+        hasRemoteAdmin = data && data.length > 0;
+      } catch (e) {
+        console.error('Error checking Supabase for admin:', e);
+      }
+    }
+    
+    setShowSetupGuide(!hasLocalAdmin && !hasRemoteAdmin);
+  } catch (error) {
+    console.error('Error checking users:', error);
+  }
+};
+```
+
+###  Execution Order
+1.  Run the **updated INSERT policy** SQL above
+2.  Click **"Migrate & Sync"** again (should now succeed for all users)
+3.  Deploy the updated `updateUserRole` and `checkInitialState` code
+4.  Hard refresh (`Ctrl+Shift+R`)
+5.  Try revoking Tinashe's admin rights again - it should now persist
+
+This will resolve all three issues by fixing the RLS permissions that are blocking multi-user operations and ensuring the setup check respects your local-first architecture.
