@@ -662,23 +662,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
   
-  const updateUserRole = async (userId: string, role: string) => { 
-    await userDB.updateUser(userId, { role: role as any, isAdmin: role === 'admin' });
+  const updateUserRole = async (userId: string, role: string) => {
+    const isAdmin = role === 'admin';
     
+    // 1. Optimistic Local Update
+    await userDB.updateUser(userId, { role, isAdmin });
+    
+    // 2. Remote Sync
     if (navigator.onLine) {
       const { error } = await supabase
         .from('user_profiles')
-        .update({ role: role, isAdmin: role === 'admin' })
+        .update({ role, isAdmin })
         .eq('id', userId);
         
       if (error) {
-        console.error('[AuthContext] Role update failed on Supabase:', error);
-        // Revert local change if remote fails
-        await userDB.updateUser(userId, { role: role === 'admin' ? 'user' : 'admin', isAdmin: role !== 'admin' });
-        throw new Error(`Failed to sync role change: ${error.message}`);
+        console.error('[AuthContext] Role update failed:', error);
+        // Revert local change on failure
+        await userDB.updateUser(userId, { 
+          role: isAdmin ? 'user' : 'admin', 
+          isAdmin: !isAdmin 
+        });
+        throw new Error(`Failed to sync role: ${error.message}`);
       }
     }
-    return { success: true }; 
+    return { success: true };
   };
   
   const checkLockoutStatus = async (staffId: string) => ({

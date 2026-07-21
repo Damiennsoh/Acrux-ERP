@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { userDB } from '@/lib/user-db';
 import { supabase } from '@/lib/supabase';
-import { slugifyOrg } from '@/lib/utils/org';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -52,44 +51,34 @@ export default function AuthPage() {
   useEffect(() => {
     const checkInitialState = async () => {
       try {
-        // Check IndexedDB FIRST (source of truth when sync is broken)
+        // 1. Check IndexedDB FIRST (Fast & Reliable)
         const localUsers = await userDB.getAllUsers();
+        const hasLocalAdmin = localUsers.some(u => u.isAdmin === true);
         
-        // Get current organization slug from localStorage or use default
-        const currentOrgSlug = slugifyOrg(localStorage.getItem('organizationName') || 'ACRUX IT SOLUTIONS');
-        
-        const hasLocalAdmin = localUsers.some(u => 
-          u.isAdmin === true && 
-          slugifyOrg(u.organizationName || '') === currentOrgSlug
-        );
+        if (hasLocalAdmin) {
+          setShowSetupGuide(false);
+          return; // No need to check Supabase if local admin exists
+        }
 
-        // Only check remote if local is empty
+        // 2. Fallback to Supabase only if no local admin found
         let hasRemoteAdmin = false;
-        if (navigator.onLine && !hasLocalAdmin) {
-          try {
-            const { data } = await supabase
-              .from('user_profiles')
-              .select('isAdmin')
-              .eq('isAdmin', true)
-              .eq('organizationName', currentOrgSlug) // Add org filter!
-              .limit(1);
-            hasRemoteAdmin = data && data.length > 0;
-          } catch (e) {
-            console.error('Error checking Supabase for admin:', e);
-          }
+        if (navigator.onLine) {
+          const { data } = await supabase
+            .from('user_profiles')
+            .select('isAdmin')
+            .eq('isAdmin', true)
+            .limit(1);
+          hasRemoteAdmin = !!data?.length;
         }
-
-        // Only show setup guide if there are no admin users locally or remotely
-        if (!hasLocalAdmin && !hasRemoteAdmin) {
-          setShowSetupGuide(true);
-        }
+        
+        setShowSetupGuide(!hasRemoteAdmin);
       } catch (error) {
-        console.error('Error checking users:', error);
+        console.error('Error checking setup state:', error);
+        setShowSetupGuide(false); // Fail safe: hide button on error
       }
     };
-    if (!isLoading) {
-      checkInitialState();
-    }
+    
+    if (!isLoading) checkInitialState();
   }, [isLoading]);
 
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {

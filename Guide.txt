@@ -1,113 +1,143 @@
-You have successfully fixed the "Infinite Recursion" and "Organization Mismatch" errors, which is why you now see **1 user** (the one whose data was normalized). However, you are now facing three distinct issues caused by **RLS Policy Restrictions** and **Stale IndexedDB Data**.
+The fact that clearing the browser fixed the display issue confirms that **IndexedDB was holding stale/corrupt data**. Now that Supabase has both users, we need to ensure your application logic correctly handles permissions, updates, and the setup button visibility.
 
-Here is the diagnosis and solution for each:
+Here are the specific fixes for each of your requirements:
 
-### 1. Why Only One User Shows Up
-**The Problem:** Your migration script failed with `403 Forbidden` / `violates row-level security policy`.
-*   The script tried to push *all* users from IndexedDB to Supabase.
-*   The RLS policy `"Users can insert own profile"` only allows `auth.uid() = id`.
-*   Since you were logged in as Damien, you could only upsert Damien's record. Tinashe's record was rejected because your ID didn't match hers.
-*   **Result:** Supabase has 1 user. IndexedDB still has 2. The app prefers Supabase when online, so it shows 1.
+### 1. Fix: Admin Can Revoke Rights & Delete Users (RLS Policy)
+Your current `updateUserRole` and `deleteUser` functions in `auth-context.tsx` likely fail silently because the RLS policy `"Users can update own or org profiles"` checks `auth.uid() = id`. When Damien tries to update Tinashe, `auth.uid()` (Damien) != `id` (Tinashe), so Supabase blocks it.
 
-**The Fix:** You need a temporary "Super Admin" policy or use the Service Role Key (not recommended for client-side). The safest immediate fix is to update the INSERT policy to allow admins to create users in their org.
+**Update your RLS Policies in Supabase SQL Editor:**
 
-Run this in Supabase SQL Editor:
 ```sql
--- Update INSERT policy to allow admins to create users in their organization
-DROP POLICY IF EXISTS "Users can insert own profile" ON public.user_profiles;
+-- DROP OLD POLICIES
+DROP POLICY IF EXISTS "Users can update own or org profiles" ON public.user_profiles;
+DROP POLICY IF EXISTS "Admins can delete org profiles" ON public.user_profiles;
 
-CREATE POLICY "Users and admins can insert profiles" 
-ON public.user_profiles FOR INSERT 
+-- NEW UPDATE POLICY: Allows admins to update ANYONE in their org
+CREATE POLICY "Admins can update org profiles" 
+ON public.user_profiles FOR UPDATE 
+USING (
+  -- Allow updating own profile
+  auth.uid() = id 
+  OR 
+  -- OR allow if current user is admin of same organization
+  (
+    (auth.jwt() ->> 'isAdmin')::boolean = true AND
+    "organizationName" = (auth.jwt() ->> 'organizationName')::text
+  )
+)
 WITH CHECK (
-  auth.uid() = id OR 
+  auth.uid() = id 
+  OR 
   (
     (auth.jwt() ->> 'isAdmin')::boolean = true AND
     "organizationName" = (auth.jwt() ->> 'organizationName')::text
   )
 );
+
+-- NEW DELETE POLICY: Allows admins to delete ANYONE in their org (except themselves)
+CREATE POLICY "Admins can delete org profiles" 
+ON public.user_profiles FOR DELETE 
+USING (
+  (auth.jwt() ->> 'isAdmin')::boolean = true AND
+  "organizationName" = (auth.jwt() ->> 'organizationName')::text AND
+  auth.uid() != id -- Prevent self-deletion
+);
 ```
 
-After running this, click **"Migrate & Sync"** again. It should now push Tinashe's record to Supabase without error.
-
-### 2. Why Revoking Admin Rights "Failed Silently"
-**The Problem:** The notification says success because the code updates **IndexedDB first**, then tries Supabase.
-*   `updateUserRole` in `auth-context.tsx` updates IndexedDB immediately → UI reflects change locally.
-*   Then it calls `supabase.from('user_profiles').update(...)`.
-*   This likely fails silently due to RLS (similar to the migration issue) or because the JWT metadata hasn't refreshed.
-*   When you refresh, `getUsers()` fetches from Supabase, which still has the old `isAdmin: true`, overwriting your local change.
-
-**The Fix:** Ensure the UPDATE policy explicitly allows admins to modify roles. The policy I provided earlier (`"Users can update own or org profiles"`) should handle this, but verify it exists. Also, add error handling to `updateUserRole`:
+### 2. Fix: Update `updateUserRole` in `auth-context.tsx`
+Your current function doesn't handle errors or revert local changes if Supabase fails. Replace it with this robust version:
 
 ```typescript
-// In auth-context.tsx, updateUserRole function
+// In auth-context.tsx
 const updateUserRole = async (userId: string, role: string) => {
-  await userDB.updateUser(userId, { role: role as any, isAdmin: role === 'admin' });
+  const isAdmin = role === 'admin';
   
+  // 1. Optimistic Local Update
+  await userDB.updateUser(userId, { role, isAdmin });
+  
+  // 2. Remote Sync
   if (navigator.onLine) {
     const { error } = await supabase
       .from('user_profiles')
-      .update({ role: role, isAdmin: role === 'admin' })
+      .update({ role, isAdmin })
       .eq('id', userId);
       
     if (error) {
-      console.error('[AuthContext] Role update failed on Supabase:', error);
-      // Revert local change if remote fails
-      await userDB.updateUser(userId, { role: role === 'admin' ? 'user' : 'admin', isAdmin: role !== 'admin' });
-      throw new Error(`Failed to sync role change: ${error.message}`);
+      console.error('[AuthContext] Role update failed:', error);
+      // Revert local change on failure
+      await userDB.updateUser(userId, { 
+        role: isAdmin ? 'user' : 'admin', 
+        isAdmin: !isAdmin 
+      });
+      throw new Error(`Failed to sync role: ${error.message}`);
     }
   }
   return { success: true };
 };
 ```
 
-### 3. Why System Setup Button Still Appears
-**The Problem:** The setup check in `page.tsx` queries Supabase directly:
-```typescript
-const { data } = await supabase.from('user_profiles').select('isAdmin').eq('isAdmin', true).limit(1);
-```
-*   Since the migration failed for Tinashe, Supabase might only have Damien (or neither if sync is broken).
-*   If Supabase returns 0 admins, the button appears.
-*   Additionally, this query lacks an organization filter, so it's checking the *entire* database.
-
-**The Fix:** Update the setup check to also consult IndexedDB as a fallback, and filter by organization:
+### 3. Fix: Hide System Setup Button When Admin Exists
+Your current `checkInitialState` in `page.tsx` only checks Supabase. If Supabase is slow or RLS blocks the query, it shows the button. Update it to check IndexedDB first (which is instant and accurate after login):
 
 ```typescript
-// In page.tsx, checkInitialState function
-const checkInitialState = async () => {
-  try {
-    const currentOrgSlug = slugifyOrg("ACRUX IT SOLUTIONS"); // Or get from context
-    
-    // Check IndexedDB FIRST (source of truth when sync is broken)
-    const localUsers = await userDB.getAllUsers();
-    const hasLocalAdmin = localUsers.some(u => u.isAdmin === true && slugifyOrg(u.organizationName) === currentOrgSlug);
-    
-    let hasRemoteAdmin = false;
-    if (navigator.onLine && !hasLocalAdmin) { // Only check remote if local is empty
-      try {
+// In page.tsx (AuthPage component)
+useEffect(() => {
+  const checkInitialState = async () => {
+    try {
+      // 1. Check IndexedDB FIRST (Fast & Reliable)
+      const localUsers = await userDB.getAllUsers();
+      const hasLocalAdmin = localUsers.some(u => u.isAdmin === true);
+      
+      if (hasLocalAdmin) {
+        setShowSetupGuide(false);
+        return; // No need to check Supabase if local admin exists
+      }
+
+      // 2. Fallback to Supabase only if no local admin found
+      let hasRemoteAdmin = false;
+      if (navigator.onLine) {
         const { data } = await supabase
           .from('user_profiles')
           .select('isAdmin')
           .eq('isAdmin', true)
-          .eq('organizationName', currentOrgSlug) // Add org filter!
           .limit(1);
-        hasRemoteAdmin = data && data.length > 0;
-      } catch (e) {
-        console.error('Error checking Supabase for admin:', e);
+        hasRemoteAdmin = !!data?.length;
       }
+      
+      setShowSetupGuide(!hasRemoteAdmin);
+    } catch (error) {
+      console.error('Error checking setup state:', error);
+      setShowSetupGuide(false); // Fail safe: hide button on error
     }
-    
-    setShowSetupGuide(!hasLocalAdmin && !hasRemoteAdmin);
-  } catch (error) {
-    console.error('Error checking users:', error);
-  }
-};
+  };
+  
+  if (!isLoading) checkInitialState();
+}, [isLoading]);
 ```
 
-###  Execution Order
-1.  Run the **updated INSERT policy** SQL above
-2.  Click **"Migrate & Sync"** again (should now succeed for all users)
-3.  Deploy the updated `updateUserRole` and `checkInitialState` code
-4.  Hard refresh (`Ctrl+Shift+R`)
-5.  Try revoking Tinashe's admin rights again - it should now persist
+### 4. Fix: Users Can Edit Own Profile
+Your `updateUserProfile` function already handles this correctly, but ensure the RLS policy allows it. The new `"Admins can update org profiles"` policy above includes `auth.uid() = id`, so users can always update their own profile regardless of admin status.
 
-This will resolve all three issues by fixing the RLS permissions that are blocking multi-user operations and ensuring the setup check respects your local-first architecture.
+### 5. Verification Checklist
+After applying these fixes:
+
+| Action | Expected Result |
+| :--- | :--- |
+| Login as Damien | See both Damien & Tinashe in User Management |
+| Click "Revoke Admin" on Tinashe | Success toast + badge changes to "Staff" |
+| Refresh page | Tinashe remains "Staff" (persisted) |
+| Login as Tinashe | Cannot see "Revoke Admin" button for herself |
+| Auth Page (with admin logged in) | "System Setup" button is HIDDEN |
+| Clear browser data + reload | "System Setup" button appears (no users locally) |
+
+### ⚠️ Critical Note About JWT Metadata
+The RLS policies rely on `auth.jwt() ->> 'isAdmin'`. This value is set **during registration/login**. If you created users before adding `isAdmin` to metadata, their JWT won't have it. 
+
+**To fix this without re-registering:**
+1. Go to Supabase Dashboard → Authentication → Users
+2. Click on Damien's user → "Edit User"
+3. Under "User Metadata", add: `"isAdmin": true`
+4. Do the same for Tinashe (set to `true` or `false` as appropriate)
+5. Have users log out and back in to refresh their JWT
+
+This ensures the RLS policies work immediately without requiring code changes to the registration flow.
