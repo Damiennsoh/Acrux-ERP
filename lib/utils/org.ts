@@ -12,3 +12,12 @@ export function slugifyOrg(name: string): string {
     .replace(/[\s_-]+/g, '-')
     .replace(/^-+|-+$/g, '');
 }
+
+/**
+ * Standardizes project IDs to lowercase for consistency.
+ * Example: "PRJ-AIT-ABC" -> "prj-ait-abc"
+ */
+export function slugifyProjectId(projectId: string): string {
+  if (!projectId) return '';
+  return projectId.toLowerCase().trim();
+}

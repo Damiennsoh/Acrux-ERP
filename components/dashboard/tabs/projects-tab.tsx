@@ -5,6 +5,7 @@ import { useCollection } from '@/hooks/useSyncData';
 import { useAuth } from '@/lib/auth-context';
 import { useCurrency } from '@/lib/currency-context';
 import { formatDate, toISODate } from '@/lib/utils/date';
+import { slugifyProjectId } from '@/lib/utils/org';
 import { createOrUpdateDoc, deleteDocWithSync, deleteProjectWithCascade } from '@/lib/sync-service';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -123,13 +124,16 @@ export function ProjectsTab() {
       const year = new Date().getFullYear();
       let baseId = `PRJ-AIT-${namePart}-${year}`;
       
-      // Collision detection check against existing projects
-      const existingIds = projects?.map(p => p.projectId) || [];
-      let finalId = baseId;
+      // Convert to lowercase for consistency
+      const baseIdLower = slugifyProjectId(baseId);
+      
+      // Collision detection check against existing projects (using lowercase)
+      const existingIds = projects?.map(p => slugifyProjectId(p.projectId)) || [];
+      let finalId = baseIdLower;
       let suffix = 65; // 'A' in ASCII
       
       while (existingIds.includes(finalId)) {
-        finalId = `${baseId}-${String.fromCharCode(suffix)}`;
+        finalId = `${baseIdLower}-${String.fromCharCode(suffix).toLowerCase()}`;
         suffix++;
         if (suffix > 90) break; // Z limit
       }
@@ -154,7 +158,7 @@ export function ProjectsTab() {
     try {
       const docId = editingId || `proj_${Date.now()}`;
       const data = {
-        projectId: formData.projectId,
+        projectId: slugifyProjectId(formData.projectId),
         name: formData.name,
         clientName: formData.clientName,
         location: formData.location,
@@ -200,10 +204,10 @@ export function ProjectsTab() {
   // Count linked records for the delete confirmation dialog
   const getLinkedCounts = (project: any): Record<string, number> => {
     if (!project) return { materials: 0, labor: 0, revenue: 0, pettyCash: 0, brokers: 0 };
-    const pId = (project.id || '').toLowerCase();
-    const slug = (project.projectId || '').toLowerCase();
+    const pId = slugifyProjectId(project.id || '');
+    const slug = slugifyProjectId(project.projectId || '');
     const match = (item: any) => {
-      const v = (item.projectId || '').toLowerCase();
+      const v = slugifyProjectId(item.projectId || '');
       return v === pId || v === slug;
     };
     return {
@@ -220,7 +224,7 @@ export function ProjectsTab() {
       const matchesStatus = filterStatus === 'all' || p.status === filterStatus;
       const matchesType = filterType === 'all' || p.projectType === filterType;
       const matchesSearch = (p.name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) || 
-                           (p.projectId?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
+                           (slugifyProjectId(p.projectId || '')).includes(slugifyProjectId(searchQuery)) ||
                            (p.clientName?.toLowerCase() || '').includes(searchQuery.toLowerCase());
       return matchesStatus && matchesType && matchesSearch;
     }

@@ -1,716 +1,109 @@
-Based on the code provided, I have identified the root causes for why your **User Management** page is not displaying users and why the **System Setup** button might be behaving unexpectedly.
+You are absolutely correct. The issue is **100% an Organization Name Mismatch (Case Sensitivity & Formatting)**.
 
-Here is the investigation and the solution.
+### 🔍 The Diagnosis
+Look closely at your browser console logs and the Network tab in your screenshots:
 
-### 1. The Core Issue: Authentication & Data Fetching Fault
+1.  **The Request:** Your app is asking Supabase for users where `organizationName = 'acrux-it-solutions'` (all lowercase, hyphens).
+    *   *Console:* `[getUsers] Fetching users for org: ACRUX IT SOLUTIONS (slug: acrux-it-solutions)`
+    *   *Network Tab:* `select=*&organizationName=eq.acrux-it-solutions`
+2.  **The Result:** Supabase returns **0 users**.
+3.  **The Reality:** In your sidebar and "General" settings, your organization is displayed as **"ACRUX IT SOLUTIONS"** (Uppercase, Spaces).
 
-The primary reason you don't see users after creating an account is likely a **synchronization gap between your Local IndexedDB and the Auth Context**, combined with how `getUsers()` is implemented in your `auth-context`.
+**Why this happens:**
+When you created the account (or when the system initialized), the `organizationName` was likely saved to the database exactly as typed: `"ACRUX IT SOLUTIONS"`. However, your `getUsers` function in `auth-context.tsx` runs `slugifyOrg()` on the current user's organization name *before* querying Supabase. It converts `"ACRUX IT SOLUTIONS"` → `"acrux-it-solutions"`. Since `"acrux-it-solutions"` does not equal `"ACRUX IT SOLUTIONS"` in the database, the query fails.
 
-#### Analysis of `page.tsx` (User Management)
-In your `UserManagementPage`, you rely on `useAuth` to fetch users:
-```typescript
-const { user: currentUser, getUsers, ... } = useAuth();
-// ...
-const fetchUsers = async () => {
-  try {
-    setLoading(true);
-    const allUsers = await getUsers(); // <--- This is the critical point
-    setUsers(allUsers);
-  } catch (error: any) {
-    toast.error(error.message || 'Failed to fetch users');
-  } finally {
-    setLoading(false);
-  }
-};
-```
+### ️ The Solution
 
-**The Problem:**
-1.  **Registration vs. Login:** When you register a new user in `page.tsx` (Auth Page), it saves to Supabase and potentially IndexedDB. However, if you are immediately redirected or if the `auth-context` hasn't refreshed its internal list of users from the database, `getUsers()` might return an empty array or stale data.
-2.  **Organization Filtering:** Your comment says `// Don't filter by organization - getUsers already does this`. If `getUsers()` in your `auth-context` is not correctly filtering by `organizationName` or if the newly created user's `organizationName` doesn't match exactly (case-sensitive issues), they won't appear.
-3.  **IndexedDB vs. Supabase:** If `getUsers()` prioritizes IndexedDB but the registration process only wrote to Supabase (or vice-versa without triggering a sync), the local store will be empty.
+You need to update `lib/auth-context.tsx` to handle this mismatch gracefully. Instead of relying solely on the slugified version for the query, we should try to fetch using the raw name first, or ensure consistency.
 
-### 2. The System Setup Button Issue
-
-In `page.tsx` (Auth Page), the logic is:
-```typescript
-const hasLocalAdmin = users.some(u => u.isAdmin === true);
-// ...
-if (!hasLocalAdmin && !hasRemoteAdmin) {
-  setShowSetupGuide(true);
-}
-```
-**The Problem:**
-If you create an admin account but `userDB.getAllUsers()` returns an empty array (because the write to IndexedDB failed or wasn't awaited properly during registration), `hasLocalAdmin` becomes `false`. If you are offline or Supabase check fails, `hasRemoteAdmin` becomes `false`. The button reappears even though the user exists in Supabase.
-
----
-
-### Solution
-
-I recommend updating the **User Management Page** to be more robust in fetching data and ensuring the **Auth Context** is synchronized. Since I cannot see your `auth-context.tsx`, I will provide the fixes for the files you uploaded and suggest what to check in your context.
-
-#### Step 1: Fix User Management Page (`page.tsx`)
-
-We need to ensure that when the page loads, it forces a fresh fetch and handles potential data mismatches.
-
-
-Based on the investigation of your code, the issue where users are not displaying in the User Management page is likely due to a **synchronization delay** or an **organization filtering mismatch**.
-
-Here is the breakdown of the fault:
-1.  **Not necessarily IndexedDB or Supabase "fault":** Both systems are working as designed (local-first with cloud sync). The problem is that when you create a user in `settings-tab.tsx`, it saves to the database, but the `UserManagementPage` might be looking at a stale version of the data or filtering it out incorrectly.
-2.  **The Real Culprit:** In your original `page.tsx`, the `fetchUsers` function relies entirely on `getUsers()` from your auth context. If that function doesn't immediately reflect the new user (due to sync lag) or if the `organizationName` property doesn't match exactly between the creator and the viewer, the list will appear empty.
-
-### Solution
-
-I have updated the **User Management Page** (`page.tsx`) to include:
-*   **Explicit Organization Filtering:** Ensures users are only shown if they belong to the current admin's organization.
-*   **Manual Refresh Button:** Allows you to force a re-fetch of data if the list doesn't update automatically.
-*   **Debug Logging:** Added `console.log` statements so you can see in your browser's developer tools exactly what data is being fetched.
-
-### Updated Code for `app/dashboard/user-management/page.tsx`
+Here is the fixed `getUsers` function. Replace the existing one in `auth-context.tsx`:
 
 ```tsx
-'use client';
-import React, { useState, useEffect, useMemo } from 'react';
-import { useAuth, AuthUser } from '@/lib/auth-context';
-import { slugifyOrg } from '@/lib/utils/org';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Spinner } from '@/components/ui/spinner';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import {
-Users,
-Trash2,
-Building,
-Zap,
-ShieldAlert,
-Search,
-UserPlus,
-Filter,
-MoreVertical,
-CheckCircle2,
-XCircle,
-ShieldCheck,
-UserCog,
-ChevronRight,
-Edit,
-X
-} from 'lucide-react';
-import { toast } from 'sonner';
-
-/** Design System Constants */
-const FONT_SANS = "'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif";
-const FONT_HEADING = "'Outfit', 'Inter', 'Segoe UI', sans-serif";
-const COLORS = {
-primary: '#14532d', // Forest Green
-primaryLight: '#16a34a', // Green 600
-primaryGradient: 'linear-gradient(135deg, #14532d 0%, #166534 50%, #15803d 100%)',
-accent: '#10b981', // Emerald 500
-background: '#f8fafc',
-card: '#ffffff',
-text: '#0f172a',
-textMuted: '#64748b',
-border: '#e2e8f0',
-adminBadge: '#10b981', // Emerald
-userBadge: '#64748b', // Slate
-};
-
-export default function UserManagementPage() {
-const { user: currentUser, getUsers, updateUserRole, deleteUser, updateUserProfile } = useAuth();
-const [users, setUsers] = useState<any[]>([]);
-const [loading, setLoading] = useState(true);
-const [actionLoading, setActionLoading] = useState<string | null>(null);
-const [searchQuery, setSearchQuery] = useState('');
-const [editingUser, setEditingUser] = useState<any | null>(null);
-const [editForm, setEditForm] = useState({ name: '', staffId: '', department: '' });
-
-const fetchUsers = async () => {
-try {
-setLoading(true);
-console.log("Fetching users for org:", currentUser?.organizationName);
-const allUsers = await getUsers();
-console.log("Raw users fetched:", allUsers);
-
-// Explicitly filter by organization here as a safety net
-// Ensure the organization name matches exactly (case-insensitive check if needed)
-const filteredByOrg = allUsers.filter(u => 
-u.organizationName === currentUser?.organizationName || 
-u.orgId === slugifyOrg(currentUser?.organizationName || '')
-);
-
-setUsers(filteredByOrg);
-} catch (error: any) {
-console.error("Fetch Users Error:", error);
-toast.error(error.message || 'Failed to fetch users');
-} finally {
-setLoading(false);
-}
-};
-
-useEffect(() => {
-if (currentUser) {
-fetchUsers();
-}
-}, [currentUser]);
-
-// Add a manual refresh button handler if needed
-const handleRefresh = () => {
-fetchUsers();
-toast.info("Refreshing user list...");
-};
-
-const filteredUsers = useMemo(() => {
-return users.filter(u =>
-u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-u.staffId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-(u.department || '').toLowerCase().includes(searchQuery.toLowerCase())
-);
-}, [users, searchQuery]);
-
-const handleToggleRole = async (targetUser: any) => {
-const newRole = targetUser.role === 'admin' ? 'user' : 'admin';
-const actionName = newRole === 'admin' ? 'promote' : 'revoke';
-if (!confirm(`Are you sure you want to ${actionName} ${targetUser.name} ${newRole === 'admin' ? 'to Administrator' : 'as Regular Staff'}?`)) {
-return;
-}
-try {
-setActionLoading(targetUser.id);
-await updateUserRole(targetUser.id, newRole);
-toast.success(`${targetUser.name} role updated to ${newRole}`);
-await fetchUsers(); // Refresh after change
-} catch (error: any) {
-toast.error(error.message || `Failed to ${actionName} user`);
-} finally {
-setActionLoading(null);
-}
-};
-
-const handleDelete = async (targetUser: any) => {
-if (!confirm(`CAUTION: Are you sure you want to delete ${targetUser.name}'s account? This action cannot be undone.`)) {
-return;
-}
-try {
-setActionLoading(targetUser.id);
-const result = await deleteUser(targetUser.id);
-if (result.success) {
-toast.success(`${targetUser.name}'s account has been deleted.`);
-await fetchUsers(); // Refresh after change
-} else {
-throw new Error(result.error);
-}
-} catch (error: any) {
-toast.error(error.message || 'Failed to delete user');
-} finally {
-setActionLoading(null);
-}
-};
-
-const handleEdit = (user: any) => {
-setEditingUser(user);
-setEditForm({ name: user.name, staffId: user.staffId, department: user.department || 'General' });
-};
-
-const handleSaveEdit = async () => {
-if (!editingUser) return;
-try {
-setActionLoading(editingUser.id);
-const result = await updateUserProfile(editingUser.id, editForm);
-if (result.success) {
-toast.success('User profile updated successfully');
-setEditingUser(null);
-await fetchUsers(); // Refresh after change
-} else {
-throw new Error(result.error);
-}
-} catch (error: any) {
-toast.error(error.message || 'Failed to update user');
-} finally {
-setActionLoading(null);
-}
-};
-
-const handleCancelEdit = () => {
-setEditingUser(null);
-setEditForm({ name: '', staffId: '', department: '' });
-};
-
-if (loading) {
-return (
-<div className="flex flex-col items-center justify-center min-h-[400px] space-y-4">
-<Spinner className="w-12 h-12" style={{ color: COLORS.primary }} />
-<p style={{ fontFamily: FONT_SANS, color: COLORS.textMuted, fontWeight: 500 }}>Loading team data...</p>
-</div>
-);
-}
-
-if (!currentUser?.isAdmin) {
-return (
-<div className="p-8">
-<Alert variant="destructive" className="border-red-500/50 bg-red-50 dark:bg-red-950/20 shadow-xl rounded-2xl">
-<ShieldAlert className="h-6 w-6 text-red-600" />
-<div className="ml-3">
-<h3 style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: '1.25rem' }} className="text-red-900 dark:text-red-100">Access Denied</h3>
-<AlertDescription className="mt-1 text-red-700 dark:text-red-300 font-medium">
-You do not have administrative privileges to manage organization users.
-Please contact your system administrator if you believe this is an error.
-</AlertDescription>
-</div>
-</Alert>
-</div>
-);
-}
-
-return (
-<div className="p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6 min-h-screen bg-slate-900">
-{/* Header Section */}
-<div className="relative overflow-hidden rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-8 border-2 border-green-600 shadow-2xl" style={{ background: 'linear-gradient(135deg, #064e3b 0%, #065f46 50%, #047857 100%)' }}>
-<div className="absolute top-0 right-0 -translate-y-1/2 translate-x-1/4 w-48 h-48 sm:w-96 sm:h-96 bg-green-400/30 rounded-full blur-3xl pointer-events-none" />
-<div className="relative z-10 flex flex-col gap-4 sm:gap-6">
-<div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-<div className="space-y-3">
-<div className="flex items-center gap-3">
-<div className="p-2 sm:p-3 rounded-xl bg-white shadow-lg">
-<Users className="w-6 h-6 sm:w-8 sm:h-8" style={{ color: '#047857' }} />
-</div>
-<h1 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight" style={{ color: '#ffffff', textShadow: '2px 2px 4px rgba(0,0,0,0.8)' }}>User Management</h1>
-</div>
-<p className="font-bold text-sm sm:text-base lg:text-lg" style={{ color: '#d1fae5', textShadow: '1px 1px 2px rgba(0,0,0,0.8)' }}>Active Command Center</p>
-</div>
-<div className="flex items-center gap-3 p-3 sm:p-4 rounded-xl border-2 border-green-500 shadow-xl self-start sm:self-auto" style={{ backgroundColor: '#ffffff' }}>
-<div className="p-2 rounded-lg" style={{ backgroundColor: '#d1fae5' }}>
-<Building className="w-5 h-5 sm:w-6 sm:h-6" style={{ color: '#047857' }} />
-</div>
-<div>
-<p className="font-bold text-xs uppercase tracking-wider" style={{ color: '#065f46' }}>Organization</p>
-<p className="font-black text-sm sm:text-base" style={{ color: '#064e3b' }}>{currentUser.organizationName}</p>
-</div>
-</div>
-</div>
-</div>
-</div>
-
-{/* Statistics Cards */}
-<div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
-<Card className="relative overflow-hidden border-2 shadow-xl" style={{ backgroundColor: '#ffffff', borderColor: '#93c5fd' }}>
-<CardHeader className="pb-1 relative p-3 sm:p-4">
-<CardTitle className="text-xs sm:text-sm font-black uppercase tracking-wider flex items-center gap-2" style={{ color: '#1d4ed8' }}>
-<div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#3b82f6' }} />
-Total Members
-</CardTitle>
-</CardHeader>
-<CardContent className="relative p-3 sm:p-4 pt-0 sm:pt-0">
-<p className="text-3xl sm:text-4xl font-black" style={{ color: '#0f172a' }}>{users.length}</p>
-<p className="text-xs font-semibold mt-1" style={{ color: '#64748b' }}>Active team members</p>
-</CardContent>
-</Card>
-<Card className="relative overflow-hidden border-2 shadow-xl" style={{ backgroundColor: '#ffffff', borderColor: '#6ee7b7' }}>
-<CardHeader className="pb-1 relative p-3 sm:p-4">
-<CardTitle className="text-xs sm:text-sm font-black uppercase tracking-wider flex items-center gap-2" style={{ color: '#047857' }}>
-<div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#10b981' }} />
-Administrators
-</CardTitle>
-</CardHeader>
-<CardContent className="relative p-3 sm:p-4 pt-0 sm:pt-0">
-<p className="text-3xl sm:text-4xl font-black" style={{ color: '#0f172a' }}>
-{users.filter(u => u.role === 'admin' || u.isAdmin).length}
-</p>
-<p className="text-xs font-semibold mt-1" style={{ color: '#64748b' }}>Full access users</p>
-</CardContent>
-</Card>
-<Card className="relative overflow-hidden border-2 shadow-xl" style={{ backgroundColor: '#ffffff', borderColor: '#fcd34d' }}>
-<CardHeader className="pb-1 relative p-3 sm:p-4">
-<CardTitle className="text-xs sm:text-sm font-black uppercase tracking-wider flex items-center gap-2" style={{ color: '#b45309' }}>
-<div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#f59e0b' }} />
-Regular Staff
-</CardTitle>
-</CardHeader>
-<CardContent className="relative p-3 sm:p-4 pt-0 sm:pt-0">
-<p className="text-3xl sm:text-4xl font-black" style={{ color: '#0f172a' }}>
-{users.filter(u => u.role !== 'admin' && !u.isAdmin).length}
-</p>
-<p className="text-xs font-semibold mt-1" style={{ color: '#64748b' }}>Standard access users</p>
-</CardContent>
-</Card>
-<Card className="relative overflow-hidden border-2 shadow-xl" style={{ backgroundColor: '#ffffff', borderColor: '#c4b5fd' }}>
-<CardHeader className="pb-1 relative p-3 sm:p-4">
-<CardTitle className="text-xs sm:text-sm font-black uppercase tracking-wider flex items-center gap-2" style={{ color: '#6d28d9' }}>
-<div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#8b5cf6' }} />
-Departments
-</CardTitle>
-</CardHeader>
-<CardContent className="relative p-3 sm:p-4 pt-0 sm:pt-0">
-<p className="text-3xl sm:text-4xl font-black" style={{ color: '#0f172a' }}>
-{[...new Set(users.map(u => u.department || 'General'))].length}
-</p>
-<p className="text-xs font-semibold mt-1" style={{ color: '#64748b' }}>Active departments</p>
-</CardContent>
-</Card>
-</div>
-
-{/* Controls & Table Section */}
-<Card className="bg-slate-800/40 backdrop-blur-xl border-slate-700/50 shadow-2xl overflow-hidden">
-<CardHeader className="border-b border-slate-700/50 bg-slate-800/30 p-4 sm:p-6">
-<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-<div>
-<CardTitle className="text-xl sm:text-2xl text-white font-bold flex items-center gap-2 sm:gap-3">
-<div className="p-2.5 rounded-xl bg-blue-600/20">
-<Users className="w-5 h-5 sm:w-6 sm:h-6 text-blue-400" />
-</div>
-<span className="truncate">Team Directory</span>
-</CardTitle>
-<CardDescription className="text-slate-400 text-xs sm:text-sm mt-1 sm:mt-2 font-medium">
-Manage {users.length} team members at {currentUser.organizationName}
-</CardDescription>
-</div>
-<Button onClick={handleRefresh} variant="outline" size="sm" className="border-slate-600 text-slate-200 hover:bg-slate-700">
-<Zap className="w-4 h-4 mr-2" />
-Refresh
-</Button>
-</div>
-</CardHeader>
-<CardContent className="p-0">
-<div className="overflow-x-auto -mx-4 sm:mx-0">
-<table className="w-full text-left min-w-[600px]">
-<thead>
-<tr className="border-b border-slate-700 bg-slate-900/40">
-<th className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-bold text-white uppercase tracking-wider">Member</th>
-<th className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-bold text-white uppercase tracking-wider hidden sm:table-cell">Department</th>
-<th className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-bold text-white uppercase tracking-wider">Role</th>
-<th className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-bold text-white uppercase tracking-wider text-right">Actions</th>
-</tr>
-</thead>
-<tbody className="divide-y divide-slate-700/50">
-{filteredUsers.length > 0 ? filteredUsers.map((u) => (
-<tr key={u.id} className="hover:bg-slate-700/20 transition-all duration-200">
-<td className="px-3 sm:px-6 py-3 sm:py-5">
-<div className="flex items-center gap-2 sm:gap-4">
-<div className={`relative w-9 h-9 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-white font-bold text-sm sm:text-lg shadow-lg flex-shrink-0
-${(u.role === 'admin' || u.isAdmin) ? 'bg-gradient-to-br from-blue-600 to-indigo-700' : 'bg-gradient-to-br from-slate-600 to-slate-700'}`}>
-{u.name.charAt(0).toUpperCase()}
-{(u.role === 'admin' || u.isAdmin) && (
-<div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 sm:w-4 sm:h-4 bg-blue-500 rounded-full border-2 border-slate-800 flex items-center justify-center">
-<ShieldAlert className="w-1.5 h-1.5 sm:w-2 sm:h-2 text-white" />
-</div>
-)}
-</div>
-<div className="flex-1 min-w-0">
-<p className="text-white font-bold text-sm sm:text-lg truncate">{u.name}</p>
-<p className="text-blue-300 text-xs sm:text-sm font-medium">
-{u.id === currentUser.id ? u.staffId : '***'}
-</p>
-{/* Mobile-only department info */}
-<p className="text-slate-400 text-xs sm:hidden mt-0.5">{u.department || 'General'}</p>
-</div>
-{u.id === currentUser.id && (
-<Badge className="bg-gradient-to-r from-blue-600/30 to-indigo-600/30 text-blue-200 border border-blue-400/40 font-semibold px-2 sm:px-3 py-0.5 sm:py-1 text-xs flex-shrink-0">
-You
-</Badge>
-)}
-</div>
-</td>
-<td className="px-3 sm:px-6 py-3 sm:py-5 hidden sm:table-cell">
-<div className="flex items-center gap-3">
-<div className="p-1.5 sm:p-2 rounded-lg bg-slate-700/50">
-<Zap className="w-3 h-3 sm:w-4 sm:h-4 text-slate-400" />
-</div>
-<div>
-<p className="text-white font-semibold text-sm">{u.department || 'General'}</p>
-<p className="text-blue-300 text-xs">Department</p>
-</div>
-</div>
-</td>
-<td className="px-3 sm:px-6 py-3 sm:py-5">
-{(u.role === 'admin' || u.isAdmin) ? (
-<Badge className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white border-0 font-bold px-2 sm:px-4 py-1 sm:py-2 shadow-lg shadow-blue-500/20 text-xs sm:text-sm">
-<ShieldAlert className="w-2 h-2 sm:w-3 sm:h-3 mr-1 sm:mr-2 hidden sm:inline" />
-<span className="sm:hidden">Admin</span>
-<span className="hidden sm:inline">Administrator</span>
-</Badge>
-) : (
-<Badge className="bg-gradient-to-r from-slate-700 to-slate-600 text-slate-200 border-0 font-bold px-2 sm:px-4 py-1 sm:py-2 text-xs sm:text-sm">
-<Users className="w-2 h-2 sm:w-3 sm:h-3 mr-1 sm:mr-2 hidden sm:inline" />
-Staff
-</Badge>
-)}
-</td>
-<td className="px-3 sm:px-6 py-3 sm:py-5 text-right">
-{u.id !== currentUser.id ? (
-<div className="flex items-center justify-end gap-1 sm:gap-3">
-<Button
-variant="outline"
-size="sm"
-onClick={() => handleEdit(u)}
-disabled={!!actionLoading}
-className="bg-slate-800/60 border-slate-600 text-slate-200 hover:bg-slate-700 hover:text-white font-semibold transition-all duration-200 text-xs px-2 sm:px-3 h-8"
->
-<Edit className="w-3 h-3 sm:w-4 sm:h-4" />
-</Button>
-<Button
-variant="outline"
-size="sm"
-onClick={() => handleToggleRole(u)}
-disabled={!!actionLoading}
-className="bg-slate-800/60 border-slate-600 text-slate-200 hover:bg-slate-700 hover:text-white font-semibold transition-all duration-200 text-xs px-2 sm:px-3 h-8"
->
-{(u.role === 'admin' || u.isAdmin) ? <span className="hidden sm:inline">Revoke Admin</span> : <span className="hidden sm:inline">Make Admin</span>}
-</Button>
-<Button
-variant="destructive"
-size="icon"
-onClick={() => handleDelete(u)}
-className="bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border-red-500/50 hover:border-red-500 transition-all duration-200 h-8 w-8"
->
-<Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
-</Button>
-</div>
-) : (
-<div className="flex items-center justify-end">
-<Badge className="bg-slate-600/50 text-blue-200 border-0 font-medium italic px-2 sm:px-3 py-0.5 sm:py-1 text-xs">
-<span className="hidden sm:inline">Managed externally</span>
-<span className="sm:hidden">External</span>
-</Badge>
-</div>
-)}
-</td>
-</tr>
-)) : (
-<tr>
-<td colSpan={4} className="px-8 py-20 text-center">
-<div className="flex flex-col items-center justify-center space-y-4">
-<div className="p-6 rounded-full bg-slate-700">
-<Search className="w-10 h-10 text-slate-400" />
-</div>
-<div className="space-y-1">
-<p className="text-xl font-bold text-slate-200">No members found</p>
-<p className="text-slate-400">Try adjusting your search query or refresh</p>
-</div>
-<Button variant="outline" className="rounded-xl border-slate-600 text-slate-200 hover:bg-slate-700" onClick={handleRefresh}>Refresh List</Button>
-</div>
-</td>
-</tr>
-)}
-</tbody>
-</table>
-</div>
-</CardContent>
-</Card>
-
-{/* Footer Info */}
-<div className="text-center pb-10">
-<p style={{ fontFamily: FONT_SANS }} className="text-[0.7rem] text-slate-400 font-bold uppercase tracking-[0.2em]">
-End of directory • Data synchronized with local-first vault
-</p>
-</div>
-
-{/* Edit User Modal */}
-{editingUser && (
-<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-<div className="bg-slate-800 rounded-2xl border border-slate-700 shadow-2xl w-full max-w-md">
-<div className="p-6 border-b border-slate-700">
-<div className="flex items-center justify-between">
-<h3 className="text-xl font-bold text-white">Edit User Profile</h3>
-<Button
-variant="ghost"
-size="icon"
-onClick={handleCancelEdit}
-className="text-slate-400 hover:text-white hover:bg-slate-700"
->
-<X className="w-5 h-5" />
-</Button>
-</div>
-</div>
-<div className="p-6 space-y-4">
-<div>
-<label className="block text-sm font-semibold text-slate-300 mb-2">Name</label>
-<Input
-value={editForm.name}
-onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditForm({ ...editForm, name: e.target.value })}
-className="bg-slate-900 border-slate-700 text-white placeholder:text-slate-500"
-placeholder="User name"
-/>
-</div>
-<div>
-<label className="block text-sm font-semibold text-slate-300 mb-2">Staff ID</label>
-<Input
-value={editForm.staffId}
-onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditForm({ ...editForm, staffId: e.target.value })}
-className="bg-slate-900 border-slate-700 text-white placeholder:text-slate-500"
-placeholder="ACRUX001"
-/>
-</div>
-<div>
-<label className="block text-sm font-semibold text-slate-300 mb-2">Department</label>
-<Input
-value={editForm.department}
-onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditForm({ ...editForm, department: e.target.value })}
-className="bg-slate-900 border-slate-700 text-white placeholder:text-slate-500"
-placeholder="General"
-/>
-</div>
-</div>
-<div className="p-6 border-t border-slate-700 flex gap-3">
-<Button
-onClick={handleSaveEdit}
-disabled={actionLoading === editingUser.id}
-className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold"
->
-{actionLoading === editingUser.id ? 'Saving...' : 'Save Changes'}
-</Button>
-<Button
-onClick={handleCancelEdit}
-variant="outline"
-className="flex-1 border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white"
->
-Cancel
-</Button>
-</div>
-</div>
-</div>
-)}
-</div>
-);
-}
-```
-
-### Why this fixes it:
-1.  **Safety Net Filtering:** Even if `getUsers()` returns everyone, the `filteredByOrg` logic ensures you only see people in your specific organization.
-2.  **Console Logs:** Open your browser's Developer Tools (F12) -> Console. When you load the page, you will see `Raw users fetched: [...]`. If that array is empty, the issue is in your `auth-context` or `user-db`. If it has data but the table is empty, the issue was the filtering.
-3.  **Refresh Button:** If you create a user in the Settings tab and switch to User Management, click "Refresh" to ensure the latest data is pulled from the local DB/Supabase.
-
-
-
-
-
-Based on the investigation of your `auth-context.tsx` and the provided requirements, the issue is **not a fault in IndexedDB or Supabase directly**, but rather a **logic gap in how the `getUsers` function handles organization filtering** combined with a potential **state synchronization delay**.
-
-### The Root Cause
-In your `auth-context.tsx`, the `getUsers` function fetches data from Supabase and saves it to IndexedDB. However, the filtering logic relies on `slugifyOrg`. If the `organizationName` stored in the user's profile (e.g., "ACRUX IT SOLUTIONS") doesn't match the slugified version expected by the filter (e.g., "acrux-it-solutions"), or if the `state.user.organizationName` is not yet updated when the page loads, the list will appear empty.
-
-Additionally, the **System Setup Button** logic in your main `page.tsx` (the auth page) correctly checks for admins, but the **User Management Page** needs to be more robust in ensuring it only shows users from the *current* admin's organization.
-
-### Solution
-
-I will provide the corrected `getUsers` function in `auth-context.tsx` to ensure robust filtering, and then update the `UserManagementPage` to include a manual refresh and better error handling.
-
-#### 1. Update `lib/auth-context.tsx`
-Replace the existing `getUsers` function with this more robust version that ensures consistency between local and remote data:
-
-```tsx
-// Inside lib/auth-context.tsx
+// lib/auth-context.tsx
 
 const getUsers = async () => {
   const db = await getDB();
-  // Ensure we have a valid organization name to filter by
-  const currentOrgName = state.user?.organizationName;
+  const currentOrgRaw = state.user?.organizationName;
   
-  if (!currentOrgName) {
+  if (!currentOrgRaw) {
     console.warn("No organization name found for current user");
     return [];
   }
 
-  const currentOrgSlug = slugifyOrg(currentOrgName);
+  const currentOrgSlug = slugifyOrg(currentOrgRaw);
 
-  // 1. Try to fetch from Supabase if online to get the latest data
+  let profiles: any[] = [];
+
+  // 1. Try fetching from Supabase with BOTH variations to catch mismatches
   if (navigator.onLine) {
     try {
-      const { data, error } = await supabase
+      // Attempt 1: Fetch by Slug (what the code currently does)
+      let { data, error } = await supabase
         .from('user_profiles')
         .select('*')
-        .eq('organizationName', currentOrgSlug); // Filter by slugified org name
+        .eq('organizationName', currentOrgSlug);
       
-      if (!error && data) {
-        // Update IndexedDB with the latest remote data
-        for (const profile of data) {
+      // Attempt 2: If empty, try fetching by Raw Name (fixes the case/space issue)
+      if ((!data || data.length === 0) && !error) {
+        const { data: rawData, error: rawError } = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('organizationName', currentOrgRaw);
+          
+        if (!rawError && rawData && rawData.length > 0) {
+          data = rawData;
+          console.log("[getUsers] Found users via Raw Org Name match. Syncing local DB...");
+        }
+      }
+
+      if (data && data.length > 0) {
+        profiles = data;
+        // Update IndexedDB with the fresh remote data
+        for (const profile of profiles) {
           await db.put('user_profiles', profile);
         }
-        // Return the fresh remote data
-        return data;
       }
     } catch (err) {
       console.error("Failed to fetch users from Supabase:", err);
-      // Fall through to local DB if remote fails
     }
   }
 
-  // 2. Fallback to IndexedDB (Offline-First)
-  const profiles = await db.getAll('user_profiles');
-  
-  // Filter locally to ensure only users from the current organization are returned
-  return profiles.filter(p => {
-    const org = p.organizationName || p.orgId;
-    // Check both direct match and slugified match for safety
-    return org === currentOrgName || slugifyOrg(org) === currentOrgSlug;
-  });
-};
-```
-
-#### 2. Update `app/dashboard/user-management/page.tsx`
-Add a **Manual Refresh** button and improve the loading state to handle cases where data might be slow to sync.
-
-```tsx
-// Add this import at the top
-import { Zap } from 'lucide-react'; // Already imported in your file
-
-// Inside the UserManagementPage component, add this handler:
-const handleRefresh = async () => {
-  setLoading(true);
-  try {
-    await fetchUsers();
-    toast.success("User list refreshed");
-  } catch (error) {
-    toast.error("Failed to refresh users");
-  } finally {
-    setLoading(false);
+  // 2. Fallback to IndexedDB if offline or remote fetch failed
+  if (profiles.length === 0) {
+    const localProfiles = await db.getAll('user_profiles');
+    // Filter locally with loose matching (check both raw and slug)
+    profiles = localProfiles.filter(p => {
+      const org = p.organizationName || p.orgId;
+      return org && (
+        org === currentOrgRaw || 
+        slugifyOrg(org) === currentOrgSlug ||
+        org.toLowerCase() === currentOrgRaw.toLowerCase()
+      );
+    });
   }
+
+  return profiles;
 };
-
-// In the JSX, add the refresh button next to the header:
-<CardHeader className="border-b border-slate-700/50 bg-slate-800/30 p-4 sm:p-6">
-  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-    <div>
-      <CardTitle className="text-xl sm:text-2xl text-white font-bold flex items-center gap-2 sm:gap-3">
-        <div className="p-2.5 rounded-xl bg-blue-600/20">
-          <Users className="w-5 h-5 sm:w-6 sm:h-6 text-blue-400" />
-        </div>
-        <span className="truncate">Team Directory</span>
-      </CardTitle>
-      <CardDescription className="text-slate-400 text-xs sm:text-sm mt-1 sm:mt-2 font-medium">
-        Manage {users.length} team members at {currentUser.organizationName}
-      </CardDescription>
-    </div>
-    {/* Add this Refresh Button */}
-    <Button 
-      onClick={handleRefresh} 
-      variant="outline" 
-      size="sm"
-      disabled={loading}
-      className="border-slate-600 text-slate-200 hover:bg-slate-700"
-    >
-      <Zap className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-      Refresh
-    </Button>
-  </div>
-</CardHeader>
 ```
 
-### Why This Fixes It:
-1.  **Consistent Filtering:** The updated `getUsers` now explicitly filters by both the raw organization name and its slugified version, preventing mismatches.
-2.  **Remote-First Sync:** When online, it prioritizes fetching from Supabase and updates the local IndexedDB, ensuring the User Management page always shows the most recent data.
-3.  **Manual Control:** The "Refresh" button gives you immediate control to force a re-fetch if the automatic sync feels delayed.
+### ⚠️ Important Next Step: Fix the Database Data
+Even with the code fix above, your database still has inconsistent data. You should normalize it so future queries work perfectly without needing "fuzzy" matching.
 
-### Regarding the System Setup Button:
-Your current logic in `page.tsx` (lines 51-80) is correct:
+1.  Go to your **Supabase Dashboard** > **Table Editor** > **user_profiles**.
+2.  Find the row for "Irene Tina she Mutasa" (or any user in that org).
+3.  Check the `organizationName` column. It probably says `ACRUX IT SOLUTIONS`.
+4.  **Option A (Recommended):** Change it to `acrux-it-solutions` (lowercase, hyphens) to match what your code expects.
+5.  **Option B:** Update your `register` function in `auth-context.tsx` to *always* save the slugified version:
+    ```tsx
+    // In register function, change this line:
+    organizationName: slugifyOrg(organizationName), // Ensure it's always saved as slug
+    ```
+
+### Why the "System Setup Button" Might Still Be Visible
+Your `page.tsx` (Auth page) checks for admins like this:
 ```tsx
-// It checks both local and remote
-const hasLocalAdmin = users.some(u => u.isAdmin === true);
-// ...
 const { data } = await supabase.from('user_profiles').select('isAdmin').eq('isAdmin', true).limit(1);
-// Only shows setup if NO admin exists in either place
-if (!hasLocalAdmin && !hasRemoteAdmin) {
-  setShowSetupGuide(true);
-}
 ```
-This will correctly hide the setup button once an admin is created and synced.
+Notice it **does not filter by organization**. If there is *any* admin in the entire database (even from a different test org), the setup button will hide. Conversely, if the admin exists but the query is somehow failing due to RLS (Row Level Security) policies that require an authenticated session (which might not be active during the initial check), it might show the button erroneously.
 
-Try these changes, and the user count and names should display correctly in the User Management page.
+However, based on your screenshots, the primary issue right now is definitely the **Organization Name Mismatch** preventing the User Management page from loading data. Apply the code fix above, and the users should appear immediately.
