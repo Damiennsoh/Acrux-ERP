@@ -491,32 +491,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const currentOrgRaw = state.user?.organizationName;
     
     if (!currentOrgRaw) {
-      console.warn("[getUsers] No organization name found for current user");
+      console.warn("[getUsers] No organization name found");
       return [];
     }
 
     const currentOrgSlug = slugifyOrg(currentOrgRaw);
     let profiles: any[] = [];
 
-    // 1. Try fetching from Supabase (Online-First)
+    // 1. Try fetching from Supabase using SLUGIFIED org name
     if (navigator.onLine) {
       try {
-        // Query using the SLUGIFIED version which matches our normalized DB data
         const { data, error } = await supabase
           .from('user_profiles')
           .select('*')
-          .eq('organizationName', currentOrgSlug);
-        
+          .eq('organizationName', currentOrgSlug); // Use slug, not raw name
+      
         if (error) {
           console.error("[getUsers] Supabase fetch error:", error.message);
         } else if (data && data.length > 0) {
           profiles = data;
-          
+        
           // Update IndexedDB with fresh remote data
           for (const profile of profiles) {
             await db.put('user_profiles', profile);
           }
-          
+        
           console.log(`[getUsers] Fetched ${profiles.length} users from Supabase`);
         }
       } catch (err) {
@@ -524,25 +523,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    // 2. CRITICAL FALLBACK: If Supabase is empty/offline, use IndexedDB
+    // 2. FALLBACK: If Supabase empty/offline, use IndexedDB
     if (profiles.length === 0) {
       const localProfiles = await db.getAll('user_profiles');
-      
-      // Filter locally with loose matching to handle any remaining inconsistencies
+    
+      // Filter locally with loose matching
       profiles = localProfiles.filter(p => {
         const org = p.organizationName || p.orgId;
         if (!org) return false;
-        
-        // Match against both raw and slugified versions
+      
         return (
           org === currentOrgRaw || 
           slugifyOrg(org) === currentOrgSlug ||
           org.toLowerCase() === currentOrgRaw.toLowerCase()
         );
       });
-      
+    
       if (profiles.length > 0) {
-        console.log(`[getUsers] Fallback to IndexedDB: Found ${profiles.length} users locally`);
+        console.log(`[getUsers] Fallback to IndexedDB: Found ${profiles.length} users`);
       }
     }
 
