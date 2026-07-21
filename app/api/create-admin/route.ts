@@ -9,6 +9,14 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { staffId, password, name, organizationName, department } = body;
 
+    // Validate password length (Supabase requires 8+ chars)
+    if (!password || password.length < 8) {
+      return NextResponse.json(
+        { success: false, error: 'Password must be at least 8 characters' },
+        { status: 400 }
+      );
+    }
+
     if (!staffId || !password || !name) {
       return NextResponse.json(
         { success: false, error: 'Missing required fields' },
@@ -33,19 +41,20 @@ export async function POST(request: NextRequest) {
 
     // Generate dummy email (required by Supabase but not used)
     const clean = staffId.toLowerCase().replace(/[^a-z0-9]/g, '');
-    const email = `${clean}@dummy.local`;
+    const email = `${clean}@acrux.local`;
+    const orgSlug = (organizationName || 'ACRUX IT SOLUTIONS').toLowerCase().replace(/\s+/g, '-');
 
     // Create user with service role (bypasses rate limits)
     const { data: adminData, error: adminError } = await supabase.auth.admin.createUser({
       email,
       password,
-      email_confirm: true,
+      email_confirm: true, // KEY FIX: Auto-confirm so login works immediately
       user_metadata: {
         staffId,
         name,
         role: 'admin',
         isAdmin: true,
-        organizationName: organizationName || 'ACRUX IT SOLUTIONS',
+        organizationName: orgSlug,
         department: department || 'General'
       }
     });
@@ -72,7 +81,7 @@ export async function POST(request: NextRequest) {
       name,
       role: 'admin',
       isAdmin: true,
-      organizationName: organizationName || 'ACRUX IT SOLUTIONS',
+      organizationName: orgSlug,
       department: department || 'General',
       defaultCurrency: 'USD'
     });

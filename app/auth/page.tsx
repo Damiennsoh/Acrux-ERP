@@ -169,25 +169,39 @@ export default function AuthPage() {
     }
   };
 
-  const handleInitializeAdmin = async (role: 'admin' | 'user' = 'admin', org: string = 'ACRUX IT SOLUTIONS', sid: string = 'ACRUX-ADMIN-01') => {
+  const handleInitializeAdmin = async () => {
     setLoading(true);
     try {
-      const result = await register(
-        'Initial Account',
-        sid,
-        'admin@123',
-        role,
-        org,
-        'Management'
-      );
-      if (result.success) {
-        toast.success(`System initialized! Use ${sid} to login.`);
+      // Call API directly instead of register() + login()
+      const response = await fetch('/api/create-admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          staffId: 'ACRUX-ADMIN-01',
+          password: 'Admin@1234', // 8+ chars required
+          name: 'System Administrator',
+          organizationName: 'ACRUX IT SOLUTIONS',
+          department: 'Management'
+        })
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to create admin');
+      }
+
+      // Now login with the confirmed credentials
+      const loginResult = await login('ACRUX-ADMIN-01', 'Admin@1234', 'ACRUX IT SOLUTIONS');
+      
+      if (loginResult.success) {
+        toast.success('System initialized! Welcome, Administrator.');
         setShowSetupGuide(false);
-        await login(sid, 'admin@123', org);
         router.replace('/dashboard');
       } else {
-        throw new Error(result.error);
+        throw new Error(loginResult.error || 'Login failed after setup');
       }
+      
     } catch (error: any) {
       toast.error(error.message || 'Initialization failed');
     } finally {
@@ -383,8 +397,8 @@ export default function AuthPage() {
                 <p className="text-blue-200 text-xs">First administrator registration required.</p>
               </div>
             </div>
-            <Button onClick={() => handleInitializeAdmin('admin')} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold h-10 text-sm" disabled={loading}>Create Administrator</Button>
-            <p className="text-[10px] text-blue-300 text-center font-medium mt-2">Default S/N: ACRUX-ADMIN-01 | PASS: admin@123</p>
+            <Button onClick={handleInitializeAdmin} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold h-10 text-sm" disabled={loading}>Create Administrator</Button>
+            <p className="text-[10px] text-blue-300 text-center font-medium mt-2">Default S/N: ACRUX-ADMIN-01 | PASS: Admin@1234 (8+ chars required)</p>
           </div>
         )}
       </div>
