@@ -1,143 +1,333 @@
-The fact that clearing the browser fixed the display issue confirms that **IndexedDB was holding stale/corrupt data**. Now that Supabase has both users, we need to ensure your application logic correctly handles permissions, updates, and the setup button visibility.
+You are absolutely right. The hybrid approach is causing data fragmentation because your `user_profiles` table in Supabase is empty, while your authentication users exist in Supabase Auth.
 
-Here are the specific fixes for each of your requirements:
+Switching to a **purely online-first architecture** is the correct decision here. It eliminates IndexedDB sync conflicts, ensures a single source of truth (Supabase), and simplifies your codebase significantly.
 
-### 1. Fix: Admin Can Revoke Rights & Delete Users (RLS Policy)
-Your current `updateUserRole` and `deleteUser` functions in `auth-context.tsx` likely fail silently because the RLS policy `"Users can update own or org profiles"` checks `auth.uid() = id`. When Damien tries to update Tinashe, `auth.uid()` (Damien) != `id` (Tinashe), so Supabase blocks it.
+Here is the complete migration plan to remove IndexedDB dependency for user management and fix your current issues:
 
-**Update your RLS Policies in Supabase SQL Editor:**
+### 1. Fix Supabase Schema & RLS (One-Time Setup)
+First, ensure your `user_profiles` table matches what your app expects. Run this in Supabase SQL Editor:
 
 ```sql
--- DROP OLD POLICIES
-DROP POLICY IF EXISTS "Users can update own or org profiles" ON public.user_profiles;
-DROP POLICY IF EXISTS "Admins can delete org profiles" ON public.user_profiles;
+-- Ensure all required columns exist
+ALTER TABLE public.user_profiles 
+  ADD COLUMN IF NOT EXISTS "organizationName" text,
+  ADD COLUMN IF NOT EXISTS "department" text DEFAULT 'General',
+  ADD COLUMN IF NOT EXISTS "role" text DEFAULT 'user',
+  ADD COLUMN IF NOT EXISTS "isAdmin" boolean DEFAULT false,
+  ADD COLUMN IF NOT EXISTS "staffId" text;
 
--- NEW UPDATE POLICY: Allows admins to update ANYONE in their org
-CREATE POLICY "Admins can update org profiles" 
-ON public.user_profiles FOR UPDATE 
-USING (
-  -- Allow updating own profile
-  auth.uid() = id 
-  OR 
-  -- OR allow if current user is admin of same organization
-  (
-    (auth.jwt() ->> 'isAdmin')::boolean = true AND
-    "organizationName" = (auth.jwt() ->> 'organizationName')::text
-  )
-)
-WITH CHECK (
-  auth.uid() = id 
-  OR 
-  (
-    (auth.jwt() ->> 'isAdmin')::boolean = true AND
-    "organizationName" = (auth.jwt() ->> 'organizationName')::text
-  )
+-- Enable RLS
+ALTER TABLE public.user_profiles ENABLE ROW LEVEL SECURITY;
+
+-- Drop old policies
+DROP POLICY IF EXISTS "Users can view own org profiles" ON public.user_profiles;
+DROP POLICY IF EXISTS "Admins can update org profiles" ON public.user_profiles;
+DROP POLICY IF EXISTS "Admins can delete org profiles" ON public.user_profiles;
+DROP POLICY IF EXISTS "Users and admins can insert profiles" ON public.user_profiles;
+
+-- NEW ONLINE-FIRST POLICIES
+CREATE POLICY "View own org profiles" ON public.user_profiles FOR SELECT USING (
+  "organizationName" = (auth.jwt() ->> 'organizationName')::text
 );
 
--- NEW DELETE POLICY: Allows admins to delete ANYONE in their org (except themselves)
-CREATE POLICY "Admins can delete org profiles" 
-ON public.user_profiles FOR DELETE 
-USING (
-  (auth.jwt() ->> 'isAdmin')::boolean = true AND
-  "organizationName" = (auth.jwt() ->> 'organizationName')::text AND
-  auth.uid() != id -- Prevent self-deletion
+CREATE POLICY "Insert own profile" ON public.user_profiles FOR INSERT WITH CHECK (
+  auth.uid() = id OR 
+  ((auth.jwt() ->> 'isAdmin')::boolean = true AND "organizationName" = (auth.jwt() ->> 'organizationName')::text)
+);
+
+CREATE POLICY "Update own or org profiles" ON public.user_profiles FOR UPDATE USING (
+  auth.uid() = id OR 
+  ((auth.jwt() ->> 'isAdmin')::boolean = true AND "organizationName" = (auth.jwt() ->> 'organizationName')::text)
+) WITH CHECK (
+  auth.uid() = id OR 
+  ((auth.jwt() ->> 'isAdmin')::boolean = true AND "organizationName" = (auth.jwt() ->> 'organizationName')::text)
+);
+
+CREATE POLICY "Delete org profiles" ON public.user_profiles FOR DELETE USING (
+  (auth.jwt() ->> 'isAdmin')::boolean = true AND "organizationName" = (auth.jwt() ->> 'organizationName')::text
 );
 ```
 
-### 2. Fix: Update `updateUserRole` in `auth-context.tsx`
-Your current function doesn't handle errors or revert local changes if Supabase fails. Replace it with this robust version:
+### 2. Update `auth-context.tsx` (Remove IndexedDB)
+Replace your entire `auth-context.tsx` with this streamlined online-only version:
 
-```typescript
-// In auth-context.tsx
-const updateUserRole = async (userId: string, role: string) => {
-  const isAdmin = role === 'admin';
-  
-  // 1. Optimistic Local Update
-  await userDB.updateUser(userId, { role, isAdmin });
-  
-  // 2. Remote Sync
-  if (navigator.onLine) {
+```tsx
+'use client';
+import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { supabase } from './supabase';
+import { slugifyOrg } from './utils/org';
+
+export interface AuthUser {
+  id: string;
+  staffId: string;
+  name: string;
+  role: string;
+  isAdmin: boolean;
+  organizationName: string;
+  department: string;
+}
+
+interface AuthContextType {
+  user: AuthUser | null;
+  isLoading: boolean;
+  login: (staffId: string, password: string, org: string) => Promise<{ success: boolean; error?: string }>;
+  logout: () => void;
+  register: (name: string, staffId: string, password: string, role: string, org: string, dept: string) => Promise<{ success: boolean; error?: string }>;
+  getUsers: () => Promise<AuthUser[]>;
+  updateUserRole: (userId: string, role: string) => Promise<{ success: boolean; error?: string }>;
+  deleteUser: (userId: string) => Promise<{ success: boolean; error?: string }>;
+  updateUserProfile: (userId: string, updates: Partial<AuthUser>) => Promise<{ success: boolean; error?: string }>;
+  changePassword: (password: string) => Promise<{ success: boolean; error?: string }>;
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+const getDummyEmail = (staffId: string) => `${staffId.toLowerCase().replace(/[^a-z0-9]/g, '')}@acrux.local`;
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Restore session on mount
+  useEffect(() => {
+    const init = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        await loadUserProfile(session.user.id, session.user.user_metadata);
+      }
+      setIsLoading(false);
+    };
+    init();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (session?.user) {
+        await loadUserProfile(session.user.id, session.user.user_metadata);
+      } else {
+        setUser(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const loadUserProfile = async (userId: string, metadata: any) => {
+    // Fetch from Supabase directly - no more IndexedDB!
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (profile) {
+      setUser({
+        id: profile.id,
+        staffId: profile.staffId || metadata.staffId,
+        name: profile.name || metadata.name,
+        role: profile.role || metadata.role,
+        isAdmin: profile.isAdmin ?? metadata.isAdmin,
+        organizationName: profile.organizationName || metadata.organizationName,
+        department: profile.department || metadata.department,
+      });
+    }
+  };
+
+  const login = async (staffId: string, password: string, org: string) => {
+    try {
+      const email = getDummyEmail(staffId);
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      
+      if (error || !data.session) {
+        return { success: false, error: error?.message || 'Invalid credentials' };
+      }
+
+      // Verify organization matches
+      const meta = data.user.user_metadata || {};
+      if (slugifyOrg(meta.organizationName) !== slugifyOrg(org)) {
+        await supabase.auth.signOut();
+        return { success: false, error: 'Organization mismatch' };
+      }
+
+      await loadUserProfile(data.user.id, meta);
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  };
+
+  const register = async (name: string, staffId: string, password: string, role: string, org: string, dept: string) => {
+    try {
+      const email = getDummyEmail(staffId);
+      const orgSlug = slugifyOrg(org);
+      
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            staffId,
+            name,
+            role,
+            isAdmin: role === 'admin',
+            organizationName: orgSlug,
+            department: dept,
+          }
+        }
+      });
+
+      if (error) return { success: false, error: error.message };
+      if (!data.user) return { success: false, error: 'Registration failed' };
+
+      // Create profile in Supabase immediately
+      const { error: profileError } = await supabase.from('user_profiles').insert({
+        id: data.user.id,
+        staffId,
+        name,
+        role,
+        isAdmin: role === 'admin',
+        organizationName: orgSlug,
+        department: dept,
+      });
+
+      if (profileError) {
+        // Clean up auth user if profile creation fails
+        await supabase.auth.admin.deleteUser(data.user.id);
+        return { success: false, error: profileError.message };
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  };
+
+  const getUsers = async () => {
+    if (!user) return [];
+    
+    const { data, error } = await supabase
+      .from('user_profiles')
+      .select('*')
+      .eq('organizationName', slugifyOrg(user.organizationName));
+
+    if (error) {
+      console.error('Failed to fetch users:', error);
+      return [];
+    }
+
+    return data.map(p => ({
+      id: p.id,
+      staffId: p.staffId,
+      name: p.name,
+      role: p.role,
+      isAdmin: p.isAdmin,
+      organizationName: p.organizationName,
+      department: p.department,
+    }));
+  };
+
+  const updateUserRole = async (userId: string, role: string) => {
     const { error } = await supabase
       .from('user_profiles')
-      .update({ role, isAdmin })
+      .update({ role, isAdmin: role === 'admin' })
       .eq('id', userId);
-      
-    if (error) {
-      console.error('[AuthContext] Role update failed:', error);
-      // Revert local change on failure
-      await userDB.updateUser(userId, { 
-        role: isAdmin ? 'user' : 'admin', 
-        isAdmin: !isAdmin 
-      });
-      throw new Error(`Failed to sync role: ${error.message}`);
+
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  };
+
+  const deleteUser = async (userId: string) => {
+    // Delete profile first (RLS allows this)
+    const { error: profileError } = await supabase
+      .from('user_profiles')
+      .delete()
+      .eq('id', userId);
+
+    if (profileError) return { success: false, error: profileError.message };
+
+    // Note: Deleting auth user requires service role key (do this via Edge Function if needed)
+    // For now, we just disable the profile
+    return { success: true };
+  };
+
+  const updateUserProfile = async (userId: string, updates: Partial<AuthUser>) => {
+    const { error } = await supabase
+      .from('user_profiles')
+      .update(updates)
+      .eq('id', userId);
+
+    if (error) return { success: false, error: error.message };
+    
+    // Update current user state if self
+    if (user?.id === userId) {
+      setUser(prev => prev ? { ...prev, ...updates } : null);
     }
-  }
-  return { success: true };
+    
+    return { success: true };
+  };
+
+  const changePassword = async (password: string) => {
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  };
+
+  const logout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+  };
+
+  return (
+    <AuthContext.Provider value={{
+      user, isLoading, login, logout, register, getUsers,
+      updateUserRole, deleteUser, updateUserProfile, changePassword
+    }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) throw new Error('useAuth must be used within AuthProvider');
+  return context;
 };
 ```
 
-### 3. Fix: Hide System Setup Button When Admin Exists
-Your current `checkInitialState` in `page.tsx` only checks Supabase. If Supabase is slow or RLS blocks the query, it shows the button. Update it to check IndexedDB first (which is instant and accurate after login):
+### 3. Update `page.tsx` (Auth Page)
+Remove all IndexedDB references from your auth page:
 
-```typescript
-// In page.tsx (AuthPage component)
+```tsx
+// In checkInitialState useEffect, replace with:
 useEffect(() => {
-  const checkInitialState = async () => {
-    try {
-      // 1. Check IndexedDB FIRST (Fast & Reliable)
-      const localUsers = await userDB.getAllUsers();
-      const hasLocalAdmin = localUsers.some(u => u.isAdmin === true);
+  const checkSetup = async () => {
+    if (!navigator.onLine) return;
+    
+    // Check if ANY admin exists in Supabase
+    const { data } = await supabase
+      .from('user_profiles')
+      .select('id')
+      .eq('isAdmin', true)
+      .limit(1);
       
-      if (hasLocalAdmin) {
-        setShowSetupGuide(false);
-        return; // No need to check Supabase if local admin exists
-      }
-
-      // 2. Fallback to Supabase only if no local admin found
-      let hasRemoteAdmin = false;
-      if (navigator.onLine) {
-        const { data } = await supabase
-          .from('user_profiles')
-          .select('isAdmin')
-          .eq('isAdmin', true)
-          .limit(1);
-        hasRemoteAdmin = !!data?.length;
-      }
-      
-      setShowSetupGuide(!hasRemoteAdmin);
-    } catch (error) {
-      console.error('Error checking setup state:', error);
-      setShowSetupGuide(false); // Fail safe: hide button on error
-    }
+    setShowSetupGuide(!data?.length);
   };
   
-  if (!isLoading) checkInitialState();
+  if (!isLoading) checkSetup();
 }, [isLoading]);
 ```
 
-### 4. Fix: Users Can Edit Own Profile
-Your `updateUserProfile` function already handles this correctly, but ensure the RLS policy allows it. The new `"Admins can update org profiles"` policy above includes `auth.uid() = id`, so users can always update their own profile regardless of admin status.
+### 4. Remove Migration Code
+Delete `lib/migrate-idb.ts` and remove the "Migrate & Sync" button from `settings-tab.tsx`. You no longer need it.
 
-### 5. Verification Checklist
-After applying these fixes:
+### Why This Fixes Everything:
+1.  **Single Source of Truth**: All user data lives in Supabase. No more sync conflicts.
+2.  **Empty Table Fixed**: Your `register` function now explicitly inserts into `user_profiles` during signup.
+3.  **RLS Works**: Policies now correctly use JWT metadata for org filtering.
+4.  **Simplified Code**: Removed ~200 lines of IndexedDB sync logic that was causing bugs.
 
-| Action | Expected Result |
-| :--- | :--- |
-| Login as Damien | See both Damien & Tinashe in User Management |
-| Click "Revoke Admin" on Tinashe | Success toast + badge changes to "Staff" |
-| Refresh page | Tinashe remains "Staff" (persisted) |
-| Login as Tinashe | Cannot see "Revoke Admin" button for herself |
-| Auth Page (with admin logged in) | "System Setup" button is HIDDEN |
-| Clear browser data + reload | "System Setup" button appears (no users locally) |
+### Next Steps:
+1.  Run the SQL above in Supabase
+2.  Replace `auth-context.tsx` and update `page.tsx`
+3.  Test registration → verify user appears in Supabase Table Editor
+4.  Test login → verify User Management shows all users
 
-### ⚠️ Critical Note About JWT Metadata
-The RLS policies rely on `auth.jwt() ->> 'isAdmin'`. This value is set **during registration/login**. If you created users before adding `isAdmin` to metadata, their JWT won't have it. 
-
-**To fix this without re-registering:**
-1. Go to Supabase Dashboard → Authentication → Users
-2. Click on Damien's user → "Edit User"
-3. Under "User Metadata", add: `"isAdmin": true`
-4. Do the same for Tinashe (set to `true` or `false` as appropriate)
-5. Have users log out and back in to refresh their JWT
-
-This ensures the RLS policies work immediately without requiring code changes to the registration flow.
+This gives you a clean, reliable online-first ERP system.

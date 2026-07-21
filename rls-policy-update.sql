@@ -1,49 +1,41 @@
--- Update INSERT policy to allow admins to create users in their organization
+-- ONLINE-FIRST ARCHITECTURE - Remove IndexedDB dependency
 -- Run this in Supabase SQL Editor
 
-DROP POLICY IF EXISTS "Users can insert own profile" ON public.user_profiles;
+-- Ensure all required columns exist
+ALTER TABLE public.user_profiles 
+  ADD COLUMN IF NOT EXISTS "organizationName" text,
+  ADD COLUMN IF NOT EXISTS "department" text DEFAULT 'General',
+  ADD COLUMN IF NOT EXISTS "role" text DEFAULT 'user',
+  ADD COLUMN IF NOT EXISTS "isAdmin" boolean DEFAULT false,
+  ADD COLUMN IF NOT EXISTS "staffId" text;
 
-CREATE POLICY "Users and admins can insert profiles" 
-ON public.user_profiles FOR INSERT 
-WITH CHECK (
-  auth.uid() = id OR 
-  (
-    (auth.jwt() ->> 'isAdmin')::boolean = true AND
-    "organizationName" = (auth.jwt() ->> 'organizationName')::text
-  )
-);
+-- Enable RLS
+ALTER TABLE public.user_profiles ENABLE ROW LEVEL SECURITY;
 
--- DROP OLD UPDATE AND DELETE POLICIES
-DROP POLICY IF EXISTS "Users can update own or org profiles" ON public.user_profiles;
+-- Drop old policies
+DROP POLICY IF EXISTS "Users can view own org profiles" ON public.user_profiles;
+DROP POLICY IF EXISTS "Admins can update org profiles" ON public.user_profiles;
 DROP POLICY IF EXISTS "Admins can delete org profiles" ON public.user_profiles;
+DROP POLICY IF EXISTS "Users and admins can insert profiles" ON public.user_profiles;
 
--- NEW UPDATE POLICY: Allows admins to update ANYONE in their org
-CREATE POLICY "Admins can update org profiles" 
-ON public.user_profiles FOR UPDATE 
-USING (
-  -- Allow updating own profile
-  auth.uid() = id 
-  OR 
-  -- OR allow if current user is admin of same organization
-  (
-    (auth.jwt() ->> 'isAdmin')::boolean = true AND
-    "organizationName" = (auth.jwt() ->> 'organizationName')::text
-  )
-)
-WITH CHECK (
-  auth.uid() = id 
-  OR 
-  (
-    (auth.jwt() ->> 'isAdmin')::boolean = true AND
-    "organizationName" = (auth.jwt() ->> 'organizationName')::text
-  )
+-- NEW ONLINE-FIRST POLICIES
+CREATE POLICY "View own org profiles" ON public.user_profiles FOR SELECT USING (
+  "organizationName" = (auth.jwt() ->> 'organizationName')::text
 );
 
--- NEW DELETE POLICY: Allows admins to delete ANYONE in their org (except themselves)
-CREATE POLICY "Admins can delete org profiles" 
-ON public.user_profiles FOR DELETE 
-USING (
-  (auth.jwt() ->> 'isAdmin')::boolean = true AND
-  "organizationName" = (auth.jwt() ->> 'organizationName')::text AND
-  auth.uid() != id -- Prevent self-deletion
+CREATE POLICY "Insert own profile" ON public.user_profiles FOR INSERT WITH CHECK (
+  auth.uid() = id OR 
+  ((auth.jwt() ->> 'isAdmin')::boolean = true AND "organizationName" = (auth.jwt() ->> 'organizationName')::text)
+);
+
+CREATE POLICY "Update own or org profiles" ON public.user_profiles FOR UPDATE USING (
+  auth.uid() = id OR 
+  ((auth.jwt() ->> 'isAdmin')::boolean = true AND "organizationName" = (auth.jwt() ->> 'organizationName')::text)
+) WITH CHECK (
+  auth.uid() = id OR 
+  ((auth.jwt() ->> 'isAdmin')::boolean = true AND "organizationName" = (auth.jwt() ->> 'organizationName')::text)
+);
+
+CREATE POLICY "Delete org profiles" ON public.user_profiles FOR DELETE USING (
+  (auth.jwt() ->> 'isAdmin')::boolean = true AND "organizationName" = (auth.jwt() ->> 'organizationName')::text
 );

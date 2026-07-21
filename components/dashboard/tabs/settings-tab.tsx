@@ -6,7 +6,6 @@ import { useAuth } from '@/lib/auth-context';
 import { useCurrency, currencies } from '@/lib/currency-context';
 import { getDB } from '@/lib/indexeddb';
 import { HybridSyncEngine } from '@/lib/sync-service';
-import { migrateAndSyncOrganizationData } from '@/lib/migrate-idb';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -97,17 +96,6 @@ export function SettingsTab() {
         console.error('Error checking sync queue:', error);
       }
     }, 1000);
-  };
-
-  const handleMigrateData = async () => {
-    toast.info('Normalizing organization data...');
-    const result = await migrateAndSyncOrganizationData();
-    if (result.success) {
-      toast.success(`✅ Migrated ${result.count} records! Refreshing...`);
-      setTimeout(() => window.location.reload(), 1500);
-    } else {
-      toast.error(`Migration failed: ${result.error}`);
-    }
   };
 
   const handleThemeChange = (newTheme: string) => {
@@ -621,14 +609,6 @@ export function SettingsTab() {
               </div>
             </CardContent>
           </Card>
-
-          <Button 
-            onClick={handleMigrateData}
-            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-12 mt-4"
-          >
-            <RefreshCw className="w-5 h-5 mr-2" />
-            Migrate & Sync Organization Data
-          </Button>
 
           {/* System Backup & Restore */}
           <Card>

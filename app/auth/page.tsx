@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
-import { userDB } from '@/lib/user-db';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -49,36 +48,20 @@ export default function AuthPage() {
   }, []);
 
   useEffect(() => {
-    const checkInitialState = async () => {
-      try {
-        // 1. Check IndexedDB FIRST (Fast & Reliable)
-        const localUsers = await userDB.getAllUsers();
-        const hasLocalAdmin = localUsers.some(u => u.isAdmin === true);
+    const checkSetup = async () => {
+      if (!navigator.onLine) return;
+      
+      // Check if ANY admin exists in Supabase
+      const { data } = await supabase
+        .from('user_profiles')
+        .select('id')
+        .eq('isAdmin', true)
+        .limit(1);
         
-        if (hasLocalAdmin) {
-          setShowSetupGuide(false);
-          return; // No need to check Supabase if local admin exists
-        }
-
-        // 2. Fallback to Supabase only if no local admin found
-        let hasRemoteAdmin = false;
-        if (navigator.onLine) {
-          const { data } = await supabase
-            .from('user_profiles')
-            .select('isAdmin')
-            .eq('isAdmin', true)
-            .limit(1);
-          hasRemoteAdmin = !!data?.length;
-        }
-        
-        setShowSetupGuide(!hasRemoteAdmin);
-      } catch (error) {
-        console.error('Error checking setup state:', error);
-        setShowSetupGuide(false); // Fail safe: hide button on error
-      }
+      setShowSetupGuide(!data?.length);
     };
     
-    if (!isLoading) checkInitialState();
+    if (!isLoading) checkSetup();
   }, [isLoading]);
 
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
