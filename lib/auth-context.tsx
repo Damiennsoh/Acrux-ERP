@@ -121,46 +121,109 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const email = getDummyEmail(staffId);
       const orgSlug = slugifyOrg(org);
-      
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            staffId,
-            name,
-            role,
-            isAdmin: role === 'admin',
-            organizationName: orgSlug,
-            department: dept,
-          }
-        }
-      });
 
-      if (error) return { success: false, error: error.message };
-      if (!data.user) return { success: false, error: 'Registration failed' };
+      // 1. Check if user already exists in Supabase first (prevent duplicate API calls)
+      const { data: existingUser } = await supabase
+        .from('user_profiles')
+        .select('id')
+        .eq('staffId', staffId)
+        .eq('organizationName', orgSlug)
+        .maybeSingle();
 
-      // Create profile in Supabase immediately
-      const { error: profileError } = await supabase.from('user_profiles').insert({
-        id: data.user.id,
-        staffId,
-        name,
-        role,
-        isAdmin: role === 'admin',
-        organizationName: orgSlug,
-        department: dept,
-      });
-
-      if (profileError) {
-        // Clean up auth user if profile creation fails
-        await supabase.auth.admin.deleteUser(data.user.id);
-        return { success: false, error: profileError.message };
+      if (existingUser) {
+        return { success: false, error: 'User with this Staff ID already exists in your organization.' };
       }
 
-      // Log audit
-      await logAudit('CREATE', 'user_profiles', data.user.id, { name, staffId, role, department: dept });
+      // 2. For Admins, ALWAYS use the API route (bypasses client-side rate limits)
+      if (role === 'admin') {
+        try {
+          const response = await fetch('/api/create-admin', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              staffId, 
+              password, 
+              name, 
+              organizationName: org, 
+              department: dept 
+            })
+          });
+          
+          const data = await response.json();
+          if (!response.ok || !data.success) {
+            // Handle specific rate limit error from API
+            if (response.status === 429) {
+              return { success: false, error: 'System busy. Please wait 30 seconds and try again.' };
+            }
+            return { success: false, error: data.error || 'Failed to create admin' };
+          }
 
-      return { success: true };
+          // Log audit
+          await logAudit('CREATE', 'user_profiles', data.user.id, { name, staffId, role, department: dept });
+
+          return { success: true };
+          
+        } catch (err: any) {
+          return { success: false, error: 'Network error during admin creation' };
+        }
+      }
+
+      // 3. For Regular Users, add retry logic for rate limits
+      let attempts = 0;
+      while (attempts < 3) {
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              staffId,
+              name,
+              role,
+              isAdmin: role === 'admin',
+              organizationName: orgSlug,
+              department: dept,
+            }
+          }
+        });
+
+        if (error) {
+          if (error.status === 429) {
+            attempts++;
+            if (attempts < 3) {
+              await new Promise(r => setTimeout(r, 2000 * attempts)); // Exponential backoff
+              continue;
+            }
+            return { success: false, error: 'Too many attempts. Please wait 30 seconds and try again.' };
+          }
+          return { success: false, error: error.message };
+        }
+
+        if (!data.user) return { success: false, error: 'Registration failed' };
+
+        // Create profile in Supabase immediately
+        const { error: profileError } = await supabase.from('user_profiles').insert({
+          id: data.user.id,
+          staffId,
+          name,
+          role,
+          isAdmin: role === 'admin',
+          organizationName: orgSlug,
+          department: dept,
+        });
+
+        if (profileError) {
+          // Clean up auth user if profile creation fails
+          await supabase.auth.admin.deleteUser(data.user.id);
+          return { success: false, error: profileError.message };
+        }
+
+        // Log audit
+        await logAudit('CREATE', 'user_profiles', data.user.id, { name, staffId, role, department: dept });
+
+        return { success: true };
+      }
+
+      return { success: false, error: 'Registration failed after multiple attempts.' };
     } catch (err: any) {
       return { success: false, error: err.message };
     }
