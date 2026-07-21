@@ -1,0 +1,219 @@
+The empty user list and IndexedDB errors are caused by **two separate issues**:
+
+1. **User profiles are not saved locally** – registration writes only to the `users` store and Supabase, **not** to the local `user_profiles` store used by `getUsers()`.
+2. **IndexedDB connection is closed prematurely** – the database connection is being closed (likely due to a failed transaction or page unload), and subsequent operations fail with `"The database connection is closing"`.
+
+---
+
+## 🔧 Fix 1: Ensure User Profiles Are Saved Locally
+
+### In `auth-context.tsx` – update the `register` function
+
+Add a helper to save the profile to both local `user_profiles` and Supabase (already done). Then ensure the local `user_profiles` is populated **after** successful user creation, **before** logging in.
+
+**Changes:**
+
+1. **Inside the service‑role success block** (after `serviceRoleClient.from('user_profiles').insert`):
+   ```ts
+   const db = await getDB();
+   await db.put('user_profiles', {
+     id: adminData.user.id,
+     staffId,
+     name,
+     role,
+     isAdmin: role === 'admin',
+     organizationName: slugifyOrg(organizationName),
+     department,
+     defaultCurrency: 'USD'
+   });
+   ```
+
+2. **In the fallback path** (both when user exists and when creating a new user), add the same `db.put` after the profile is created or fetched.
+
+This ensures the local `user_profiles` store always mirrors the remote.
+
+---
+
+### In `login` – fetch and store the user profile
+
+After a successful login, fetch the user’s profile from Supabase and store it locally, so `getUsers()` can see it immediately.
+
+```ts
+// After setting authUser, before the sync pull
+if (navigator.onLine) {
+  const { data: profiles } = await supabase
+    .from('user_profiles')
+    .select('*')
+    .eq('id', data.user.id)
+    .limit(1);
+  if (profiles && profiles.length > 0) {
+    const db = await getDB();
+    await db.put('user_profiles', profiles[0]);
+  }
+}
+```
+
+Also, after logging in, we already call `pullRemoteChanges(orgId)` – that should eventually pull all user_profiles for the org, but doing this immediately ensures the current user appears.
+
+---
+
+### Update `getUsers()` to merge local and remote
+
+Currently `getUsers()` reads only from local `user_profiles`. If online, it fetches from Supabase and stores them locally. However, if the local store is empty and the Supabase fetch fails (e.g., due to the IDB error), the list will be empty.  
+Add a fallback to the `users` store (from `userDB`) if `user_profiles` is empty, but for consistency, it’s better to ensure `user_profiles` is always populated.
+
+---
+
+## 🔧 Fix 2: Prevent IndexedDB Connection Closures
+
+### The Problem
+The error `"The database connection is closing"` usually occurs when:
+- The database is closed (e.g., due to a previous error that closed the connection).
+- Multiple tabs are open and one closes the connection.
+- A transaction is started after the connection has been closed.
+
+We don’t close the connection explicitly, but `idb` may close it if an error occurs. The `dbInstance` variable remains set, but the actual connection is dead.
+
+### Solution: Implement Automatic Reconnection
+
+Modify `getDB()` to **always reopen** if the connection is invalid.  
+We can store a `dbInstance` but check if it’s still usable by performing a simple operation (e.g., `db.get('sync_metadata', 'test')`). If it fails, clear `dbInstance` and try to reopen.
+
+**Updated `getDB` in `indexeddb.ts`:**
+
+```ts
+let dbInstance: IDBPDatabase<FinManageDBSchema> | null = null;
+
+export async function getDB(): Promise<IDBPDatabase<FinManageDBSchema>> {
+  // If we have an instance, test it with a dummy transaction
+  if (dbInstance) {
+    try {
+      // Try to get a store name – if it fails, the connection is dead
+      await dbInstance.get('sync_metadata', 'health-check');
+      return dbInstance;
+    } catch (err) {
+      // Connection is dead, clear instance and reopen
+      dbInstance = null;
+    }
+  }
+
+  // Open fresh connection
+  dbInstance = await openDB<FinManageDBSchema>('AcruxERPDB', 6, {
+    upgrade(db, oldVersion) {
+      // ... keep existing upgrade logic ...
+    },
+  });
+
+  return dbInstance;
+}
+```
+
+This ensures that if the database connection fails, the next call to `getDB()` will reopen it.
+
+---
+
+### Additional Protection in Sync Operations
+
+Wrap IndexedDB transactions in `try/catch` and re‑call `getDB()` if an error occurs. For example, in `pullRemoteChanges`:
+
+```ts
+// Inside each table loop
+try {
+  const db = await getDB();
+  // ... use db ...
+} catch (err) {
+  if (err.name === 'InvalidStateError' && err.message.includes('closing')) {
+    // Reopen and retry
+    dbInstance = null;
+    await pullRemoteChanges(orgId); // recursive retry (with a limit)
+  }
+  throw err;
+}
+```
+
+---
+
+## 🧪 Testing
+
+After applying these changes:
+
+1. **Create a new admin** via the setup guide – it will now save to `user_profiles` locally.
+2. **Log in** – the profile will be fetched and stored.
+3. **Go to User Management** – the list should show the logged‑in user and any other users you create.
+4. **IndexedDB errors** – should stop occurring because we now reopen the connection automatically.
+
+---
+
+## 📝 Full Code Snippets (Relevant Changes)
+
+### `auth-context.tsx` – `register` (service role path)
+
+```ts
+if (!adminError && adminData?.user) {
+  // ... insert to Supabase user_profiles (existing) ...
+
+  // --- NEW: Save to local user_profiles ---
+  const db = await getDB();
+  await db.put('user_profiles', {
+    id: adminData.user.id,
+    staffId,
+    name,
+    role,
+    isAdmin: role === 'admin',
+    organizationName: slugifyOrg(organizationName),
+    department,
+    defaultCurrency: 'USD'
+  });
+
+  // ... rest (login attempt) ...
+}
+```
+
+Do the same in the fallback path after creating or finding the user.
+
+### `login` – after successful sign‑in
+
+```ts
+// After setting authUser, before sync pull
+if (navigator.onLine) {
+  const { data: profiles } = await supabase
+    .from('user_profiles')
+    .select('*')
+    .eq('id', data.user.id)
+    .limit(1);
+  if (profiles && profiles.length) {
+    const db = await getDB();
+    await db.put('user_profiles', profiles[0]);
+  }
+}
+```
+
+### `indexeddb.ts` – robust `getDB`
+
+```ts
+let dbInstance: IDBPDatabase<FinManageDBSchema> | null = null;
+
+export async function getDB(): Promise<IDBPDatabase<FinManageDBSchema>> {
+  if (dbInstance) {
+    try {
+      // Test connection with a minimal read
+      await dbInstance.get('sync_metadata', 'health-check');
+      return dbInstance;
+    } catch {
+      dbInstance = null; // invalid, reopen
+    }
+  }
+
+  dbInstance = await openDB<FinManageDBSchema>('AcruxERPDB', 6, {
+    upgrade(db, oldVersion) {
+      // ... keep existing upgrade logic ...
+    },
+  });
+
+  return dbInstance;
+}
+```
+
+---
+
+After these fixes, both the user list and IndexedDB stability should be resolved. Let me know if you encounter any further issues.

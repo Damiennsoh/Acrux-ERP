@@ -186,55 +186,103 @@ export class HybridSyncEngine {
   async pullRemoteChanges(orgId: string) {
     if (!navigator.onLine) return;
     
-    const db = await getDB();
-    const collections = ['projects', 'expenses', 'revenue', 'development_tools', 'development_costs', 'broker_payments', 'miscellaneous', 'user_profiles', 'organizations', 'audit_logs'];
+    try {
+      const db = await getDB();
+      const collections = ['projects', 'expenses', 'revenue', 'development_tools', 'development_costs', 'broker_payments', 'miscellaneous', 'user_profiles', 'organizations', 'audit_logs'];
 
-    for (const table of collections) {
-      try {
-        const meta = await db.get('sync_metadata', table);
-        const lastSync = meta?.lastPullTimestamp 
-          ? new Date(meta.lastPullTimestamp).toISOString() 
-          : '1970-01-01T00:00:00Z';
+      for (const table of collections) {
+        try {
+          const meta = await db.get('sync_metadata', table);
+          const lastSync = meta?.lastPullTimestamp 
+            ? new Date(meta.lastPullTimestamp).toISOString() 
+            : '1970-01-01T00:00:00Z';
 
-        let query = supabase.from(table).select('*').gt('serverUpdatedAt', lastSync);
-        
-        // Handle table-specific organization filters
-        if (table === 'organizations') {
-          query = query.eq('id', orgId);
-        } else if (table === 'user_profiles') {
-          query = query.eq('organizationName', orgId);
-        } else {
-          query = query.eq('orgId', orgId);
-        }
-
-        const { data, error } = await query;
-
-        if (!error && data && data.length > 0) {
-          for (const record of data) {
-            // Because the schema is exactly camelCase, we insert the fetched record straight to IDB natively without mapping!
-            if (record.isDeleted) {
-              await db.delete(table as any, record.id);
-            } else {
-              await db.put(table as any, record);
-            }
+          let query = supabase.from(table).select('*').gt('serverUpdatedAt', lastSync);
+          
+          // Handle table-specific organization filters
+          if (table === 'organizations') {
+            query = query.eq('id', orgId);
+          } else if (table === 'user_profiles') {
+            query = query.eq('organizationName', orgId);
+          } else {
+            query = query.eq('orgId', orgId);
           }
-          
-          // Update the last pull timestamp to the newest record's time
-          const newestStr = data.reduce((prev, curr) => 
-            new Date(curr.serverUpdatedAt) > new Date(prev) ? curr.serverUpdatedAt : prev, lastSync);
-          
-          const newestTs = new Date(newestStr).getTime();
-          
-          await db.put('sync_metadata', { 
-            id: table, 
-            collection: table, 
-            lastPullTimestamp: newestTs,
-            lastPushTimestamp: Date.now()
-          } as any);
+
+          const { data, error } = await query;
+
+          if (!error && data && data.length > 0) {
+            for (const record of data) {
+              // Because the schema is exactly camelCase, we insert the fetched record straight to IDB natively without mapping!
+              if (record.isDeleted) {
+                await db.delete(table as any, record.id);
+              } else {
+                await db.put(table as any, record);
+              }
+            }
+            
+            // Update the last pull timestamp to the newest record's time
+            const newestStr = data.reduce((prev, curr) => 
+              new Date(curr.serverUpdatedAt) > new Date(prev) ? curr.serverUpdatedAt : prev, lastSync);
+            
+            const newestTs = new Date(newestStr).getTime();
+            
+            await db.put('sync_metadata', { 
+              id: table, 
+              collection: table, 
+              lastPullTimestamp: newestTs,
+              lastPushTimestamp: Date.now()
+            } as any);
+          }
+        } catch (err: any) {
+          if (err.name === 'InvalidStateError' && err.message.includes('closing')) {
+            // Reopen and retry this table
+            console.warn(`[SyncEngine] Connection closed during pull for ${table}, reopening...`);
+            const freshDb = await getDB();
+            const meta = await freshDb.get('sync_metadata', table);
+            const lastSync = meta?.lastPullTimestamp 
+              ? new Date(meta.lastPullTimestamp).toISOString() 
+              : '1970-01-01T00:00:00Z';
+
+            let query = supabase.from(table).select('*').gt('serverUpdatedAt', lastSync);
+            
+            if (table === 'organizations') {
+              query = query.eq('id', orgId);
+            } else if (table === 'user_profiles') {
+              query = query.eq('organizationName', orgId);
+            } else {
+              query = query.eq('orgId', orgId);
+            }
+
+            const { data, error } = await query;
+
+            if (!error && data && data.length > 0) {
+              for (const record of data) {
+                if (record.isDeleted) {
+                  await freshDb.delete(table as any, record.id);
+                } else {
+                  await freshDb.put(table as any, record);
+                }
+              }
+              
+              const newestStr = data.reduce((prev, curr) => 
+                new Date(curr.serverUpdatedAt) > new Date(prev) ? curr.serverUpdatedAt : prev, lastSync);
+              
+              const newestTs = new Date(newestStr).getTime();
+              
+              await freshDb.put('sync_metadata', { 
+                id: table, 
+                collection: table, 
+                lastPullTimestamp: newestTs,
+                lastPushTimestamp: Date.now()
+              } as any);
+            }
+          } else {
+            console.error(`[SyncEngine] Pull failed for ${table}:`, err);
+          }
         }
-      } catch (err) {
-        console.error(`[SyncEngine] Pull failed for ${table}:`, err);
       }
+    } catch (err: any) {
+      console.error('[SyncEngine] Pull remote changes error:', err);
     }
   }
 }

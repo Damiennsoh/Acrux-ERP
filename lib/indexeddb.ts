@@ -91,11 +91,22 @@ export interface FinManageDBSchema extends DBSchema {
   };
 }
 
-let dbInstance: IDBPDatabase<FinManageDBSchema>;
+let dbInstance: IDBPDatabase<FinManageDBSchema> | null = null;
 
 export async function getDB(): Promise<IDBPDatabase<FinManageDBSchema>> {
-  if (dbInstance) return dbInstance;
+  // If we have an instance, test it with a dummy transaction
+  if (dbInstance) {
+    try {
+      // Try to get a store name – if it fails, the connection is dead
+      await dbInstance.get('sync_metadata', 'health-check');
+      return dbInstance;
+    } catch (err) {
+      // Connection is dead, clear instance and reopen
+      dbInstance = null;
+    }
+  }
 
+  // Open fresh connection
   dbInstance = await openDB<FinManageDBSchema>('AcruxERPDB', 6, {
     upgrade(db, oldVersion) {
       // Users store

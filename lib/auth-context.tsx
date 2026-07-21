@@ -216,6 +216,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Safe select to avoid 406 if RLS blocks or missing
         const { data: profiles } = await supabase.from('user_profiles').select('*').eq('id', data.user.id).limit(1);
         profileData = profiles && profiles.length > 0 ? profiles[0] : null;
+        
+        // Store profile locally for getUsers to work immediately
+        if (profileData) {
+          const db = await getDB();
+          await db.put('user_profiles', profileData);
+        }
       }
 
       const meta = data.user.user_metadata || {};
