@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { useCollection } from '@/hooks/useSyncData';
+import { useSupabaseCollection } from '@/hooks/useSupabaseData';
 import { formatDate } from '@/lib/utils/date';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -12,8 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Search, History, AlertCircle } from 'lucide-react';
 
 export function AuditLogTab() {
-  const { data: auditLogs, isLoading } = useCollection('audit_logs');
-  const { data: userProfiles } = useCollection('user_profiles');
+  const { data: auditLogs, isLoading } = useSupabaseCollection('audit_logs');
+  const { data: userProfiles } = useSupabaseCollection('user_profiles');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterAction, setFilterAction] = useState('all');
   const [filterEntity, setFilterEntity] = useState('all');
