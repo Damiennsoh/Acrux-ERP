@@ -197,137 +197,137 @@ USING (
 -- Projects RLS Policies
 DROP POLICY IF EXISTS "Users can view own org projects" ON public.projects;
 CREATE POLICY "Users can view own org projects" ON public.projects FOR SELECT
-USING (orgId = (auth.jwt() ->> 'organizationName')::text);
+USING ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
 DROP POLICY IF EXISTS "Users can insert own org projects" ON public.projects;
 CREATE POLICY "Users can insert own org projects" ON public.projects FOR INSERT
-WITH CHECK (orgId = (auth.jwt() ->> 'organizationName')::text);
+WITH CHECK ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
 DROP POLICY IF EXISTS "Users can update own org projects" ON public.projects;
 CREATE POLICY "Users can update own org projects" ON public.projects FOR UPDATE
-USING (orgId = (auth.jwt() ->> 'organizationName')::text)
-WITH CHECK (orgId = (auth.jwt() ->> 'organizationName')::text);
+USING ("orgId" = (auth.jwt() ->> 'organizationName')::text)
+WITH CHECK ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
 DROP POLICY IF EXISTS "Users can delete own org projects" ON public.projects;
 CREATE POLICY "Users can delete own org projects" ON public.projects FOR DELETE
-USING (orgId = (auth.jwt() ->> 'organizationName')::text);
+USING ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
 -- Expenses RLS Policies
 DROP POLICY IF EXISTS "Users can view own org expenses" ON public.expenses;
 CREATE POLICY "Users can view own org expenses" ON public.expenses FOR SELECT
-USING (orgId = (auth.jwt() ->> 'organizationName')::text);
+USING ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
 DROP POLICY IF EXISTS "Users can insert own org expenses" ON public.expenses;
 CREATE POLICY "Users can insert own org expenses" ON public.expenses FOR INSERT
-WITH CHECK (orgId = (auth.jwt() ->> 'organizationName')::text);
+WITH CHECK ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
 DROP POLICY IF EXISTS "Users can update own org expenses" ON public.expenses;
 CREATE POLICY "Users can update own org expenses" ON public.expenses FOR UPDATE
-USING (orgId = (auth.jwt() ->> 'organizationName')::text)
-WITH CHECK (orgId = (auth.jwt() ->> 'organizationName')::text);
+USING ("orgId" = (auth.jwt() ->> 'organizationName')::text)
+WITH CHECK ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
 DROP POLICY IF EXISTS "Users can delete own org expenses" ON public.expenses;
 CREATE POLICY "Users can delete own org expenses" ON public.expenses FOR DELETE
-USING (orgId = (auth.jwt() ->> 'organizationName')::text);
+USING ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
 -- Revenue RLS Policies
 DROP POLICY IF EXISTS "Users can view own org revenue" ON public.revenue;
 CREATE POLICY "Users can view own org revenue" ON public.revenue FOR SELECT
-USING (orgId = (auth.jwt() ->> 'organizationName')::text);
+USING ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
 DROP POLICY IF EXISTS "Users can insert own org revenue" ON public.revenue;
 CREATE POLICY "Users can insert own org revenue" ON public.revenue FOR INSERT
-WITH CHECK (orgId = (auth.jwt() ->> 'organizationName')::text);
+WITH CHECK ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
 DROP POLICY IF EXISTS "Users can update own org revenue" ON public.revenue;
 CREATE POLICY "Users can update own org revenue" ON public.revenue FOR UPDATE
-USING (orgId = (auth.jwt() ->> 'organizationName')::text)
-WITH CHECK (orgId = (auth.jwt() ->> 'organizationName')::text);
+USING ("orgId" = (auth.jwt() ->> 'organizationName')::text)
+WITH CHECK ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
 DROP POLICY IF EXISTS "Users can delete own org revenue" ON public.revenue;
 CREATE POLICY "Users can delete own org revenue" ON public.revenue FOR DELETE
-USING (orgId = (auth.jwt() ->> 'organizationName')::text);
+USING ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
 -- Materials RLS Policies
 DROP POLICY IF EXISTS "Users can view own org materials" ON public.materials;
 CREATE POLICY "Users can view own org materials" ON public.materials FOR SELECT
-USING (orgId = (auth.jwt() ->> 'organizationName')::text);
+USING ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
 DROP POLICY IF EXISTS "Users can insert own org materials" ON public.materials;
 CREATE POLICY "Users can insert own org materials" ON public.materials FOR INSERT
-WITH CHECK (orgId = (auth.jwt() ->> 'organizationName')::text);
+WITH CHECK ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
 DROP POLICY IF EXISTS "Users can update own org materials" ON public.materials;
 CREATE POLICY "Users can update own org materials" ON public.materials FOR UPDATE
-USING (orgId = (auth.jwt() ->> 'organizationName')::text)
-WITH CHECK (orgId = (auth.jwt() ->> 'organizationName')::text);
+USING ("orgId" = (auth.jwt() ->> 'organizationName')::text)
+WITH CHECK ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
 DROP POLICY IF EXISTS "Users can delete own org materials" ON public.materials;
 CREATE POLICY "Users can delete own org materials" ON public.materials FOR DELETE
-USING (orgId = (auth.jwt() ->> 'organizationName')::text);
+USING ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
 -- Labor RLS Policies
 DROP POLICY IF EXISTS "Users can view own org labor" ON public.labor;
 CREATE POLICY "Users can view own org labor" ON public.labor FOR SELECT
-USING (orgId = (auth.jwt() ->> 'organizationName')::text);
+USING ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
 DROP POLICY IF EXISTS "Users can insert own org labor" ON public.labor;
 CREATE POLICY "Users can insert own org labor" ON public.labor FOR INSERT
-WITH CHECK (orgId = (auth.jwt() ->> 'organizationName')::text);
+WITH CHECK ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
 DROP POLICY IF EXISTS "Users can update own org labor" ON public.labor;
 CREATE POLICY "Users can update own org labor" ON public.labor FOR UPDATE
-USING (orgId = (auth.jwt() ->> 'organizationName')::text)
-WITH CHECK (orgId = (auth.jwt() ->> 'organizationName')::text);
+USING ("orgId" = (auth.jwt() ->> 'organizationName')::text)
+WITH CHECK ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
 DROP POLICY IF EXISTS "Users can delete own org labor" ON public.labor;
 CREATE POLICY "Users can delete own org labor" ON public.labor FOR DELETE
-USING (orgId = (auth.jwt() ->> 'organizationName')::text);
+USING ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
 -- Petty Cash RLS Policies
 DROP POLICY IF EXISTS "Users can view own org petty_cash" ON public.petty_cash;
 CREATE POLICY "Users can view own org petty_cash" ON public.petty_cash FOR SELECT
-USING (orgId = (auth.jwt() ->> 'organizationName')::text);
+USING ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
 DROP POLICY IF EXISTS "Users can insert own org petty_cash" ON public.petty_cash;
 CREATE POLICY "Users can insert own org petty_cash" ON public.petty_cash FOR INSERT
-WITH CHECK (orgId = (auth.jwt() ->> 'organizationName')::text);
+WITH CHECK ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
 DROP POLICY IF EXISTS "Users can update own org petty_cash" ON public.petty_cash;
 CREATE POLICY "Users can update own org petty_cash" ON public.petty_cash FOR UPDATE
-USING (orgId = (auth.jwt() ->> 'organizationName')::text)
-WITH CHECK (orgId = (auth.jwt() ->> 'organizationName')::text);
+USING ("orgId" = (auth.jwt() ->> 'organizationName')::text)
+WITH CHECK ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
 DROP POLICY IF EXISTS "Users can delete own org petty_cash" ON public.petty_cash;
 CREATE POLICY "Users can delete own org petty_cash" ON public.petty_cash FOR DELETE
-USING (orgId = (auth.jwt() ->> 'organizationName')::text);
+USING ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
 -- Broker Payments RLS Policies
 DROP POLICY IF EXISTS "Users can view own org broker_payments" ON public.broker_payments;
 CREATE POLICY "Users can view own org broker_payments" ON public.broker_payments FOR SELECT
-USING (orgId = (auth.jwt() ->> 'organizationName')::text);
+USING ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
 DROP POLICY IF EXISTS "Users can insert own org broker_payments" ON public.broker_payments;
 CREATE POLICY "Users can insert own org broker_payments" ON public.broker_payments FOR INSERT
-WITH CHECK (orgId = (auth.jwt() ->> 'organizationName')::text);
+WITH CHECK ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
 DROP POLICY IF EXISTS "Users can update own org broker_payments" ON public.broker_payments;
 CREATE POLICY "Users can update own org broker_payments" ON public.broker_payments FOR UPDATE
-USING (orgId = (auth.jwt() ->> 'organizationName')::text)
-WITH CHECK (orgId = (auth.jwt() ->> 'organizationName')::text);
+USING ("orgId" = (auth.jwt() ->> 'organizationName')::text)
+WITH CHECK ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
 DROP POLICY IF EXISTS "Users can delete own org broker_payments" ON public.broker_payments;
 CREATE POLICY "Users can delete own org broker_payments" ON public.broker_payments FOR DELETE
-USING (orgId = (auth.jwt() ->> 'organizationName')::text);
+USING ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
 -- Audit Logs RLS Policies
 DROP POLICY IF EXISTS "Users can view own org audit_logs" ON public.audit_logs;
 CREATE POLICY "Users can view own org audit_logs" ON public.audit_logs FOR SELECT
-USING (orgId = (auth.jwt() ->> 'organizationName')::text);
+USING ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
 DROP POLICY IF EXISTS "Users can insert own org audit_logs" ON public.audit_logs;
 CREATE POLICY "Users can insert own org audit_logs" ON public.audit_logs FOR INSERT
-WITH CHECK (orgId = (auth.jwt() ->> 'organizationName')::text);
+WITH CHECK ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_user_profiles_org ON public.user_profiles("organizationName");
