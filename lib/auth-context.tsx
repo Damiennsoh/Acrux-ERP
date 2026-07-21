@@ -56,6 +56,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
+  const logAudit = async (action: string, entityType: string, entityId: string, changes?: any) => {
+    if (!user) return;
+    
+    try {
+      await supabase.from('audit_logs').insert({
+        userId: user.id,
+        action,
+        entityType,
+        entityId,
+        changes: changes || {},
+        orgId: slugifyOrg(user.organizationName),
+      });
+    } catch (error) {
+      console.error('Failed to log audit:', error);
+    }
+  };
+
   const loadUserProfile = async (userId: string, metadata: any) => {
     // Fetch from Supabase directly - no more IndexedDB!
     const { data: profile } = await supabase
@@ -140,6 +157,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { success: false, error: profileError.message };
       }
 
+      // Log audit
+      await logAudit('CREATE', 'user_profiles', data.user.id, { name, staffId, role, department: dept });
+
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err.message };
@@ -177,6 +197,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .eq('id', userId);
 
     if (error) return { success: false, error: error.message };
+
+    // Log audit
+    await logAudit('UPDATE', 'user_profiles', userId, { role, isAdmin: role === 'admin' });
+
     return { success: true };
   };
 
@@ -188,6 +212,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .eq('id', userId);
 
     if (profileError) return { success: false, error: profileError.message };
+
+    // Log audit
+    await logAudit('DELETE', 'user_profiles', userId);
 
     // Note: Deleting auth user requires service role key (do this via Edge Function if needed)
     // For now, we just disable the profile
@@ -202,6 +229,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (error) return { success: false, error: error.message };
     
+    // Log audit
+    await logAudit('UPDATE', 'user_profiles', userId, updates);
+    
     // Update current user state if self
     if (user?.id === userId) {
       setUser(prev => prev ? { ...prev, ...updates } : null);
@@ -213,6 +243,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const changePassword = async (password: string) => {
     const { error } = await supabase.auth.updateUser({ password });
     if (error) return { success: false, error: error.message };
+
+    // Log audit
+    await logAudit('UPDATE', 'auth', user?.id || '', { action: 'password_change' });
+
     return { success: true };
   };
 
