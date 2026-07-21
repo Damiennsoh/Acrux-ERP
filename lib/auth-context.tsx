@@ -110,7 +110,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { success: false, error: 'Organization mismatch' };
       }
 
-      await loadUserProfile(data.user.id, meta);
+      // Fetch profile - handle 406 gracefully with metadata fallback
+      let profileData = null;
+      try {
+        const { data: profiles, error: profileError } = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('id', data.user.id)
+          .limit(1);
+        
+        if (!profileError && profiles && profiles.length > 0) {
+          profileData = profiles[0];
+        }
+      } catch (e) {
+        console.warn('[AuthContext] Profile fetch failed, using metadata fallback:', e);
+      }
+
+      // Build user object from profile OR metadata
+      const authUser = {
+        id: data.user.id,
+        staffId: profileData?.staffId || meta.staffId || staffId,
+        name: profileData?.name || meta.name || 'User',
+        role: profileData?.role || meta.role || 'user',
+        isAdmin: profileData?.isAdmin ?? (meta.isAdmin === true),
+        organizationName: profileData?.organizationName || meta.organizationName || org,
+        department: profileData?.department || meta.department || 'General',
+      };
+
+      setUser(authUser);
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err.message };

@@ -21,8 +21,9 @@ CREATE TABLE IF NOT EXISTS public.user_profiles (
   name text NOT NULL,
   role text DEFAULT 'user',
   isAdmin boolean DEFAULT false,
-  organizationName text NOT NULL REFERENCES public.organizations(id),
+  organizationName text NOT NULL,
   department text DEFAULT 'General',
+  defaultCurrency text DEFAULT 'USD',
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
