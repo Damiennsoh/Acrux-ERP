@@ -15,19 +15,13 @@ import { LogIn, User, Zap, AlertTriangle, Wifi, WifiOff, Building, IdCard, HelpC
 
 export default function AuthPage() {
   const router = useRouter();
-  const { user, isLoading, login, register, getSecurityQuestion, verifySecurityAnswer, changePassword } = useAuth();
-  const [securityQuestion, setSecurityQuestion] = useState<string | null>(null);
-  const [isFetchingQuestion, setIsFetchingQuestion] = useState(false);
-  const [recoveryStaffId, setRecoveryStaffId] = useState('');
-  const [recoveryOrgName, setRecoveryOrgName] = useState('ACRUX IT SOLUTIONS');
+  const { user, isLoading, login, changePassword } = useAuth();
   const [loading, setLoading] = useState(false);
-  const [tab, setTab] = useState<'login' | 'recovery'>('login');
+  const [tab, setTab] = useState<'login'>('login');
   const [isOnline, setIsOnline] = useState(true);
   const [showSetupGuide, setShowSetupGuide] = useState(false);
-  const signupFormRef = useRef<HTMLFormElement>(null);
   
   const [showPassword, setShowPassword] = useState(false);
-  const [showSignupPassword, setShowSignupPassword] = useState(false);
 
   useEffect(() => {
     if (!isLoading && user) {
@@ -91,94 +85,33 @@ export default function AuthPage() {
     }
   };
 
-  const handleSignup = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      const formData = new FormData(e.currentTarget);
-      const name = formData.get('name') as string;
-      const organizationName = formData.get('organizationName') as string;
-      const staffId = formData.get('staffId') as string;
-      const department = (formData.get('department') as string) || 'General';
-      const role = formData.get('role') as string;
-      const securityQuestion = formData.get('securityQuestion') as string;
-      const securityAnswer = formData.get('securityAnswer') as string;
-      const password = formData.get('password') as string;
-      const confirmPassword = formData.get('confirmPassword') as string;
-
-      if (!name || !organizationName || !staffId || !password || !confirmPassword || !securityQuestion || !securityAnswer) {
-        throw new Error('Please fill in all required fields');
-      }
-
-      if (password !== confirmPassword) {
-        throw new Error('Passwords do not match');
-      }
-
-      const result = await register(
-        name,
-        staffId,
-        password,
-        role,
-        organizationName,
-        department,
-        securityQuestion,
-        securityAnswer
-      );
-
-      if (result.success) {
-        toast.success('Account created! Sign in using your Staff ID.');
-        setTab('login');
-        if (signupFormRef.current) signupFormRef.current.reset();
-      } else {
-        throw new Error(result.error || 'Signup failed');
-      }
-    } catch (error: any) {
-      toast.error(error.message || 'Signup failed');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleRecovery = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      const formData = new FormData(e.currentTarget);
-      const staffId = formData.get('staffId') as string;
-      const organizationName = formData.get('organizationName') as string;
-      const answer = formData.get('securityAnswer') as string;
-      const newPassword = formData.get('newPassword') as string;
-      const confirmPassword = formData.get('confirmPassword') as string;
-
-      if (newPassword !== confirmPassword) {
-        throw new Error('Passwords do not match');
-      }
-
-      const result = await verifySecurityAnswer(staffId, answer, organizationName);
-      if (result.success) {
-        await changePassword(newPassword);
-        toast.success('Password reset successfully!');
-        setTab('login');
-      } else {
-        throw new Error(result.error || 'Verification failed');
-      }
-    } catch (error: any) {
-      toast.error(error.message || 'Recovery failed');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleInitializeAdmin = async () => {
     setLoading(true);
     try {
-      // Call API directly instead of register() + login()
+      // 1. Check if admin already exists in Supabase
+      let hasRemoteAdmin = false;
+      if (navigator.onLine) {
+        const { data } = await supabase
+          .from('user_profiles')
+          .select('id')
+          .eq('isAdmin', true)
+          .limit(1);
+        hasRemoteAdmin = !!data?.length;
+      }
+
+      if (hasRemoteAdmin) {
+        toast.info('Administrator already exists. Please sign in.');
+        setShowSetupGuide(false);
+        return;
+      }
+
+      // 2. Create admin via API (bypasses rate limits)
       const response = await fetch('/api/create-admin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           staffId: 'ACRUX-ADMIN-01',
-          password: 'Admin@1234', // 8+ chars required
+          password: 'Admin@1234', // 8+ chars required by Supabase
           name: 'System Administrator',
           organizationName: 'ACRUX IT SOLUTIONS',
           department: 'Management'
@@ -187,11 +120,18 @@ export default function AuthPage() {
 
       const data = await response.json();
       
-      if (!response.ok || !data.success) {
+      if (!response.ok) {
+        // Handle duplicate email gracefully
+        if (response.status === 400 && data.error?.includes('already been registered')) {
+          toast.info('Admin account already exists. Signing you in...');
+          await login('ACRUX-ADMIN-01', 'Admin@1234', 'ACRUX IT SOLUTIONS');
+          router.replace('/dashboard');
+          return;
+        }
         throw new Error(data.error || 'Failed to create admin');
       }
 
-      // Now login with the confirmed credentials
+      // 3. Auto-login after successful creation
       const loginResult = await login('ACRUX-ADMIN-01', 'Admin@1234', 'ACRUX IT SOLUTIONS');
       
       if (loginResult.success) {
@@ -203,31 +143,12 @@ export default function AuthPage() {
       }
       
     } catch (error: any) {
+      console.error('Initialization error:', error);
       toast.error(error.message || 'Initialization failed');
     } finally {
       setLoading(false);
     }
   };
-
-  useEffect(() => {
-    const fetchQuestion = async () => {
-      if (!recoveryStaffId || !recoveryOrgName) {
-        setSecurityQuestion(null);
-        return;
-      }
-      try {
-        setIsFetchingQuestion(true);
-        const question = await getSecurityQuestion(recoveryStaffId, recoveryOrgName);
-        setSecurityQuestion(question);
-      } catch (error) {
-        setSecurityQuestion(null);
-      } finally {
-        setIsFetchingQuestion(false);
-      }
-    };
-    const timeoutId = setTimeout(fetchQuestion, 500); 
-    return () => clearTimeout(timeoutId);
-  }, [recoveryStaffId, recoveryOrgName, getSecurityQuestion]);
 
   if (isLoading) {
     return (
@@ -306,16 +227,7 @@ export default function AuthPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-sm font-bold text-white uppercase tracking-wider">Password</label>
-                    <button 
-                      type="button" 
-                      onClick={() => setTab('recovery')}
-                      className="text-xs text-blue-400 font-bold hover:text-blue-300"
-                    >
-                      Recovery?
-                    </button>
-                  </div>
+                  <label className="text-sm font-bold text-white uppercase tracking-wider">Password</label>
                   <div className="relative">
                     <LockIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                     <Input
@@ -339,50 +251,6 @@ export default function AuthPage() {
                   {loading ? <Spinner className="w-4 h-4 mr-2" /> : <LogIn className="w-4 h-4 mr-2" />}
                   Sign In
                 </Button>
-              </form>
-            </TabsContent>
-
-
-            <TabsContent value="recovery" className="p-6 space-y-6 m-0 outline-none">
-              <div className="space-y-1">
-                <h2 className="text-xl font-bold text-white">Reset Password</h2>
-                <p className="text-slate-400 text-sm">Recover account via identification</p>
-              </div>
-
-              <form onSubmit={handleRecovery} className="space-y-4">
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-bold text-white uppercase tracking-wider">Staff ID</label>
-                    <div className="relative">
-                      <IdCard className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                      <Input type="text" name="staffId" placeholder="GLP123" value={recoveryStaffId} onChange={(e) => setRecoveryStaffId(e.target.value)} required className="pl-10 bg-slate-800 border-slate-700 text-white font-bold" />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-bold text-white uppercase tracking-wider">Organization Name</label>
-                    <div className="relative">
-                      <Building className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                      <Input type="text" name="organizationName" placeholder="ACRUX IT SOLUTIONS" value={recoveryOrgName} onChange={(e) => setRecoveryOrgName(e.target.value)} required className="pl-10 bg-slate-800 border-slate-700 text-white font-bold" />
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="space-y-2">
-                  <label className="text-sm font-bold text-white uppercase tracking-wider italic text-blue-400">
-                    {isFetchingQuestion ? "Searching..." : securityQuestion ? "Your Security Question" : "Enter ID & Org to see question"}
-                  </label>
-                  {securityQuestion && <div className="p-3 bg-blue-900/40 border border-blue-500/50 rounded-lg text-blue-100 font-bold text-sm italic">{securityQuestion}</div>}
-                  <Input type="text" name="securityAnswer" placeholder="Answer" required className="bg-slate-800 border-slate-700 text-white" />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <Input type="password" name="newPassword" placeholder="New Password" required className="bg-slate-800 border-slate-700 text-white" />
-                  <Input type="password" name="confirmPassword" placeholder="Confirm" required className="bg-slate-800 border-slate-700 text-white" />
-                </div>
-
-                <Button type="submit" className="w-full h-11 bg-indigo-600 hover:bg-indigo-700 text-white font-bold" disabled={loading}>Reset</Button>
-                <Button variant="ghost" type="button" className="w-full text-slate-400 hover:text-white" onClick={() => setTab('login')}>Back</Button>
               </form>
             </TabsContent>
           </Tabs>

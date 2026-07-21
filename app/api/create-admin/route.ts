@@ -44,11 +44,10 @@ export async function POST(request: NextRequest) {
     const email = `${clean}@acrux.local`;
     const orgSlug = (organizationName || 'ACRUX IT SOLUTIONS').toLowerCase().replace(/\s+/g, '-');
 
-    // Create user with service role (bypasses rate limits)
-    const { data: adminData, error: adminError } = await supabase.auth.admin.createUser({
+    // Try to create user
+    const { data, error } = await supabase.auth.admin.createUser({
       email,
       password,
-      email_confirm: true, // KEY FIX: Auto-confirm so login works immediately
       user_metadata: {
         staffId,
         name,
@@ -56,27 +55,43 @@ export async function POST(request: NextRequest) {
         isAdmin: true,
         organizationName: orgSlug,
         department: department || 'General'
-      }
+      },
+      email_confirm: true
     });
 
-    if (adminError) {
-      console.error('Admin creation error:', adminError);
-      return NextResponse.json(
-        { success: false, error: adminError.message },
-        { status: 400 }
-      );
+    // Handle duplicate email gracefully
+    if (error && error.message.includes('already been registered')) {
+      // Find existing user by email
+      const { data: existingUsers } = await supabase.auth.admin.listUsers();
+      const existingUser = existingUsers?.users.find(u => u.email === email);
+      
+      if (existingUser) {
+        // Try to create profile if it doesn't exist
+        await supabase.from('user_profiles').upsert({
+          id: existingUser.id,
+          staffId,
+          name,
+          role: 'admin',
+          isAdmin: true,
+          organizationName: orgSlug,
+          department: department || 'General'
+        }, { onConflict: 'id' });
+        
+        return NextResponse.json({ 
+          success: true, 
+          user: { id: existingUser.id },
+          message: 'User already exists' 
+        });
+      }
     }
 
-    if (!adminData?.user) {
-      return NextResponse.json(
-        { success: false, error: 'Failed to create user' },
-        { status: 500 }
-      );
+    if (error) {
+      return NextResponse.json({ success: false, error: error.message }, { status: 400 });
     }
 
     // Create user profile
     const { error: profileError } = await supabase.from('user_profiles').insert({
-      id: adminData.user.id,
+      id: data.user.id,
       staffId,
       name,
       role: 'admin',
@@ -94,7 +109,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       user: {
-        id: adminData.user.id,
+        id: data.user.id,
         email,
         staffId,
         name,
