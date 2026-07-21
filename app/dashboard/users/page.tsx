@@ -59,14 +59,31 @@ export default function UserManagementPage() {
   const fetchUsers = async () => {
     try {
       setLoading(true);
+      console.log("[UserManagement] Fetching users for org:", currentUser?.organizationName);
       const allUsers = await getUsers();
-      // Don't filter by organization - getUsers already does this
-      setUsers(allUsers);
+      console.log("[UserManagement] Raw users fetched:", allUsers);
+      
+      // Safety net: Explicitly filter by organization here as well
+      const currentOrgSlug = currentUser?.organizationName ? slugifyOrg(currentUser.organizationName) : '';
+      const filteredByOrg = allUsers.filter(u => 
+        u.organizationName === currentUser?.organizationName || 
+        u.organizationName === currentOrgSlug ||
+        u.orgId === currentOrgSlug
+      );
+      console.log("[UserManagement] Filtered to", filteredByOrg.length, "users for current organization");
+      
+      setUsers(filteredByOrg);
     } catch (error: any) {
+      console.error("[UserManagement] Fetch users error:", error);
       toast.error(error.message || 'Failed to fetch users');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRefresh = async () => {
+    await fetchUsers();
+    toast.info("Refreshing user list...");
   };
 
   useEffect(() => {
@@ -288,6 +305,16 @@ export default function UserManagementPage() {
                 Manage {users.length} team members at {currentUser.organizationName}
               </CardDescription>
             </div>
+            <Button 
+              onClick={handleRefresh} 
+              variant="outline" 
+              size="sm"
+              disabled={loading}
+              className="border-slate-600 text-slate-200 hover:bg-slate-700"
+            >
+              <Zap className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
           </div>
         </CardHeader>
         

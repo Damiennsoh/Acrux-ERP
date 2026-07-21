@@ -488,31 +488,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // The following functions are updated for the Supabase hybrid approach
   const getUsers = async () => {
     const db = await getDB();
-    const currentOrg = state.user?.organizationName ? slugifyOrg(state.user.organizationName) : null;
+    // Ensure we have a valid organization name to filter by
+    const currentOrgName = state.user?.organizationName;
+    
+    if (!currentOrgName) {
+      console.warn("[getUsers] No organization name found for current user");
+      return [];
+    }
 
-    if (navigator.onLine && currentOrg) {
-      // Re-fetch profiles for this organization
-      const { data, error } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('organizationName', currentOrg);
+    const currentOrgSlug = slugifyOrg(currentOrgName);
+    console.log("[getUsers] Fetching users for org:", currentOrgName, "(slug:", currentOrgSlug + ")");
+
+    // 1. Try to fetch from Supabase if online to get the latest data
+    if (navigator.onLine) {
+      try {
+        const { data, error } = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('organizationName', currentOrgSlug); // Filter by slugified org name
         
-      if (!error && data) {
-         for (const profile of data) {
-            // Also save to indexedDB directly to keep it warm
+        if (!error && data) {
+          console.log("[getUsers] Fetched", data.length, "users from Supabase");
+          // Update IndexedDB with the latest remote data
+          for (const profile of data) {
             await db.put('user_profiles', profile);
-         }
+          }
+          // Return the fresh remote data
+          return data;
+        } else if (error) {
+          console.error("[getUsers] Failed to fetch from Supabase:", error);
+        }
+      } catch (err) {
+        console.error("[getUsers] Error fetching from Supabase:", err);
+        // Fall through to local DB if remote fails
       }
     }
 
-    // Read from IndexedDB (Offline-First)
+    // 2. Fallback to IndexedDB (Offline-First)
     const profiles = await db.getAll('user_profiles');
+    console.log("[getUsers] Fetched", profiles.length, "profiles from IndexedDB");
     
-    // Return filtered results for current organization
-    return profiles.filter(p => {
-        const org = p.organizationName || p.orgId; // Support both naming conventions
-        return org && slugifyOrg(org) === currentOrg;
+    // Filter locally to ensure only users from the current organization are returned
+    const filtered = profiles.filter(p => {
+      const org = p.organizationName || p.orgId;
+      // Check both direct match and slugified match for safety
+      return org === currentOrgName || slugifyOrg(org) === currentOrgSlug;
     });
+    console.log("[getUsers] Filtered to", filtered.length, "users for current organization");
+    
+    return filtered;
   };
 
   const deleteUser = async (userId: string) => { 
