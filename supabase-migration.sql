@@ -40,89 +40,46 @@ CREATE TABLE IF NOT EXISTS public.projects (
   status text DEFAULT 'Active',
   documentUrl text,
   budget numeric DEFAULT 0,
-  orgId text NOT NULL,
+  "orgId" text NOT NULL,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
 
--- Create expenses table
-CREATE TABLE IF NOT EXISTS public.expenses (
+-- Create development_tools table
+CREATE TABLE IF NOT EXISTS public.development_tools (
   id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
   projectId text NOT NULL,
+  toolName text NOT NULL,
   description text,
-  amount numeric NOT NULL,
-  category text,
+  cost numeric NOT NULL,
   date timestamptz DEFAULT now(),
-  orgId text NOT NULL,
+  "orgId" text NOT NULL,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
 
--- Create revenue table
-CREATE TABLE IF NOT EXISTS public.revenue (
-  id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
-  projectId text NOT NULL,
-  description text,
-  amount numeric NOT NULL,
-  category text,
-  date timestamptz DEFAULT now(),
-  orgId text NOT NULL,
-  created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now()
-);
-
--- Create materials table
-CREATE TABLE IF NOT EXISTS public.materials (
-  id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
-  projectId text NOT NULL,
-  itemName text NOT NULL,
-  quantity numeric NOT NULL,
-  unit text,
-  unitCost numeric NOT NULL,
-  totalCost numeric GENERATED ALWAYS AS (quantity * unitCost) STORED,
-  supplier text,
-  date timestamptz DEFAULT now(),
-  orgId text NOT NULL,
-  created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now()
-);
-
--- Create labor table
-CREATE TABLE IF NOT EXISTS public.labor (
-  id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
-  projectId text NOT NULL,
-  workerName text NOT NULL,
-  hours numeric NOT NULL,
-  hourlyRate numeric NOT NULL,
-  totalCost numeric GENERATED ALWAYS AS (hours * hourlyRate) STORED,
-  date timestamptz DEFAULT now(),
-  orgId text NOT NULL,
-  created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now()
-);
-
--- Create petty_cash table
-CREATE TABLE IF NOT EXISTS public.petty_cash (
+-- Create miscellaneous table
+CREATE TABLE IF NOT EXISTS public.miscellaneous (
   id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
   projectId text NOT NULL,
   description text NOT NULL,
   amount numeric NOT NULL,
   category text,
   date timestamptz DEFAULT now(),
-  orgId text NOT NULL,
+  "orgId" text NOT NULL,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
 
--- Create broker_payments table
-CREATE TABLE IF NOT EXISTS public.broker_payments (
+-- Create broker table
+CREATE TABLE IF NOT EXISTS public.broker (
   id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
   projectId text NOT NULL,
   brokerName text NOT NULL,
   amount numeric NOT NULL,
   commissionRate numeric,
   paymentDate timestamptz DEFAULT now(),
-  orgId text NOT NULL,
+  "orgId" text NOT NULL,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
@@ -136,19 +93,16 @@ CREATE TABLE IF NOT EXISTS public.audit_logs (
   entityId text,
   changes jsonb,
   timestamp timestamptz DEFAULT now(),
-  orgId text NOT NULL
+  "orgId" text NOT NULL
 );
 
 -- Enable RLS on all tables
 ALTER TABLE public.organizations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.expenses ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.revenue ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.materials ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.labor ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.petty_cash ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.broker_payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.development_tools ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.miscellaneous ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.broker ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 
 -- Organizations RLS Policies
@@ -212,112 +166,58 @@ DROP POLICY IF EXISTS "Users can delete own org projects" ON public.projects;
 CREATE POLICY "Users can delete own org projects" ON public.projects FOR DELETE
 USING ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
--- Expenses RLS Policies
-DROP POLICY IF EXISTS "Users can view own org expenses" ON public.expenses;
-CREATE POLICY "Users can view own org expenses" ON public.expenses FOR SELECT
+-- Development Tools RLS Policies
+DROP POLICY IF EXISTS "Users can view own org development_tools" ON public.development_tools;
+CREATE POLICY "Users can view own org development_tools" ON public.development_tools FOR SELECT
 USING ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
-DROP POLICY IF EXISTS "Users can insert own org expenses" ON public.expenses;
-CREATE POLICY "Users can insert own org expenses" ON public.expenses FOR INSERT
+DROP POLICY IF EXISTS "Users can insert own org development_tools" ON public.development_tools;
+CREATE POLICY "Users can insert own org development_tools" ON public.development_tools FOR INSERT
 WITH CHECK ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
-DROP POLICY IF EXISTS "Users can update own org expenses" ON public.expenses;
-CREATE POLICY "Users can update own org expenses" ON public.expenses FOR UPDATE
+DROP POLICY IF EXISTS "Users can update own org development_tools" ON public.development_tools;
+CREATE POLICY "Users can update own org development_tools" ON public.development_tools FOR UPDATE
 USING ("orgId" = (auth.jwt() ->> 'organizationName')::text)
 WITH CHECK ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
-DROP POLICY IF EXISTS "Users can delete own org expenses" ON public.expenses;
-CREATE POLICY "Users can delete own org expenses" ON public.expenses FOR DELETE
+DROP POLICY IF EXISTS "Users can delete own org development_tools" ON public.development_tools;
+CREATE POLICY "Users can delete own org development_tools" ON public.development_tools FOR DELETE
 USING ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
--- Revenue RLS Policies
-DROP POLICY IF EXISTS "Users can view own org revenue" ON public.revenue;
-CREATE POLICY "Users can view own org revenue" ON public.revenue FOR SELECT
+-- Miscellaneous RLS Policies
+DROP POLICY IF EXISTS "Users can view own org miscellaneous" ON public.miscellaneous;
+CREATE POLICY "Users can view own org miscellaneous" ON public.miscellaneous FOR SELECT
 USING ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
-DROP POLICY IF EXISTS "Users can insert own org revenue" ON public.revenue;
-CREATE POLICY "Users can insert own org revenue" ON public.revenue FOR INSERT
+DROP POLICY IF EXISTS "Users can insert own org miscellaneous" ON public.miscellaneous;
+CREATE POLICY "Users can insert own org miscellaneous" ON public.miscellaneous FOR INSERT
 WITH CHECK ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
-DROP POLICY IF EXISTS "Users can update own org revenue" ON public.revenue;
-CREATE POLICY "Users can update own org revenue" ON public.revenue FOR UPDATE
+DROP POLICY IF EXISTS "Users can update own org miscellaneous" ON public.miscellaneous;
+CREATE POLICY "Users can update own org miscellaneous" ON public.miscellaneous FOR UPDATE
 USING ("orgId" = (auth.jwt() ->> 'organizationName')::text)
 WITH CHECK ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
-DROP POLICY IF EXISTS "Users can delete own org revenue" ON public.revenue;
-CREATE POLICY "Users can delete own org revenue" ON public.revenue FOR DELETE
+DROP POLICY IF EXISTS "Users can delete own org miscellaneous" ON public.miscellaneous;
+CREATE POLICY "Users can delete own org miscellaneous" ON public.miscellaneous FOR DELETE
 USING ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
--- Materials RLS Policies
-DROP POLICY IF EXISTS "Users can view own org materials" ON public.materials;
-CREATE POLICY "Users can view own org materials" ON public.materials FOR SELECT
+-- Broker RLS Policies
+DROP POLICY IF EXISTS "Users can view own org broker" ON public.broker;
+CREATE POLICY "Users can view own org broker" ON public.broker FOR SELECT
 USING ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
-DROP POLICY IF EXISTS "Users can insert own org materials" ON public.materials;
-CREATE POLICY "Users can insert own org materials" ON public.materials FOR INSERT
+DROP POLICY IF EXISTS "Users can insert own org broker" ON public.broker;
+CREATE POLICY "Users can insert own org broker" ON public.broker FOR INSERT
 WITH CHECK ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
-DROP POLICY IF EXISTS "Users can update own org materials" ON public.materials;
-CREATE POLICY "Users can update own org materials" ON public.materials FOR UPDATE
+DROP POLICY IF EXISTS "Users can update own org broker" ON public.broker;
+CREATE POLICY "Users can update own org broker" ON public.broker FOR UPDATE
 USING ("orgId" = (auth.jwt() ->> 'organizationName')::text)
 WITH CHECK ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
-DROP POLICY IF EXISTS "Users can delete own org materials" ON public.materials;
-CREATE POLICY "Users can delete own org materials" ON public.materials FOR DELETE
-USING ("orgId" = (auth.jwt() ->> 'organizationName')::text);
-
--- Labor RLS Policies
-DROP POLICY IF EXISTS "Users can view own org labor" ON public.labor;
-CREATE POLICY "Users can view own org labor" ON public.labor FOR SELECT
-USING ("orgId" = (auth.jwt() ->> 'organizationName')::text);
-
-DROP POLICY IF EXISTS "Users can insert own org labor" ON public.labor;
-CREATE POLICY "Users can insert own org labor" ON public.labor FOR INSERT
-WITH CHECK ("orgId" = (auth.jwt() ->> 'organizationName')::text);
-
-DROP POLICY IF EXISTS "Users can update own org labor" ON public.labor;
-CREATE POLICY "Users can update own org labor" ON public.labor FOR UPDATE
-USING ("orgId" = (auth.jwt() ->> 'organizationName')::text)
-WITH CHECK ("orgId" = (auth.jwt() ->> 'organizationName')::text);
-
-DROP POLICY IF EXISTS "Users can delete own org labor" ON public.labor;
-CREATE POLICY "Users can delete own org labor" ON public.labor FOR DELETE
-USING ("orgId" = (auth.jwt() ->> 'organizationName')::text);
-
--- Petty Cash RLS Policies
-DROP POLICY IF EXISTS "Users can view own org petty_cash" ON public.petty_cash;
-CREATE POLICY "Users can view own org petty_cash" ON public.petty_cash FOR SELECT
-USING ("orgId" = (auth.jwt() ->> 'organizationName')::text);
-
-DROP POLICY IF EXISTS "Users can insert own org petty_cash" ON public.petty_cash;
-CREATE POLICY "Users can insert own org petty_cash" ON public.petty_cash FOR INSERT
-WITH CHECK ("orgId" = (auth.jwt() ->> 'organizationName')::text);
-
-DROP POLICY IF EXISTS "Users can update own org petty_cash" ON public.petty_cash;
-CREATE POLICY "Users can update own org petty_cash" ON public.petty_cash FOR UPDATE
-USING ("orgId" = (auth.jwt() ->> 'organizationName')::text)
-WITH CHECK ("orgId" = (auth.jwt() ->> 'organizationName')::text);
-
-DROP POLICY IF EXISTS "Users can delete own org petty_cash" ON public.petty_cash;
-CREATE POLICY "Users can delete own org petty_cash" ON public.petty_cash FOR DELETE
-USING ("orgId" = (auth.jwt() ->> 'organizationName')::text);
-
--- Broker Payments RLS Policies
-DROP POLICY IF EXISTS "Users can view own org broker_payments" ON public.broker_payments;
-CREATE POLICY "Users can view own org broker_payments" ON public.broker_payments FOR SELECT
-USING ("orgId" = (auth.jwt() ->> 'organizationName')::text);
-
-DROP POLICY IF EXISTS "Users can insert own org broker_payments" ON public.broker_payments;
-CREATE POLICY "Users can insert own org broker_payments" ON public.broker_payments FOR INSERT
-WITH CHECK ("orgId" = (auth.jwt() ->> 'organizationName')::text);
-
-DROP POLICY IF EXISTS "Users can update own org broker_payments" ON public.broker_payments;
-CREATE POLICY "Users can update own org broker_payments" ON public.broker_payments FOR UPDATE
-USING ("orgId" = (auth.jwt() ->> 'organizationName')::text)
-WITH CHECK ("orgId" = (auth.jwt() ->> 'organizationName')::text);
-
-DROP POLICY IF EXISTS "Users can delete own org broker_payments" ON public.broker_payments;
-CREATE POLICY "Users can delete own org broker_payments" ON public.broker_payments FOR DELETE
+DROP POLICY IF EXISTS "Users can delete own org broker" ON public.broker;
+CREATE POLICY "Users can delete own org broker" ON public.broker FOR DELETE
 USING ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
 -- Audit Logs RLS Policies
@@ -334,11 +234,9 @@ CREATE INDEX IF NOT EXISTS idx_user_profiles_org ON public.user_profiles("organi
 CREATE INDEX IF NOT EXISTS idx_user_profiles_staffId ON public.user_profiles("staffId");
 CREATE INDEX IF NOT EXISTS idx_projects_org ON public.projects("orgId");
 CREATE INDEX IF NOT EXISTS idx_projects_projectId ON public.projects("projectId");
-CREATE INDEX IF NOT EXISTS idx_expenses_org ON public.expenses("orgId");
-CREATE INDEX IF NOT EXISTS idx_revenue_org ON public.revenue("orgId");
-CREATE INDEX IF NOT EXISTS idx_materials_org ON public.materials("orgId");
-CREATE INDEX IF NOT EXISTS idx_labor_org ON public.labor("orgId");
-CREATE INDEX IF NOT EXISTS idx_petty_cash_org ON public.petty_cash("orgId");
-CREATE INDEX IF NOT EXISTS idx_broker_payments_org ON public.broker_payments("orgId");
+CREATE INDEX IF NOT EXISTS idx_development_tools_org ON public.development_tools("orgId");
+CREATE INDEX IF NOT EXISTS idx_miscellaneous_org ON public.miscellaneous("orgId");
+CREATE INDEX IF NOT EXISTS idx_broker_org ON public.broker("orgId");
 CREATE INDEX IF NOT EXISTS idx_audit_logs_org ON public.audit_logs("orgId");
 CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON public.audit_logs("timestamp");
+
