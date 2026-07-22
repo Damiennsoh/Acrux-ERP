@@ -108,7 +108,10 @@ export default function AuthPage() {
         return;
       }
 
-      // 2. Create superadmin via API (bypasses rate limits)
+      // 2. Create superadmin via API (bypasses rate limits) - force slugification
+      const orgName = 'ACRUX IT SOLUTIONS';
+      const orgSlug = orgName.toLowerCase().replace(/\s+/g, '-');
+      
       const response = await fetch('/api/create-admin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -117,7 +120,7 @@ export default function AuthPage() {
           password: 'Admin@1234', // 8+ chars required by Supabase
           name: 'System Administrator',
           role: 'superadmin',
-          organizationName: 'ACRUX IT SOLUTIONS',
+          organizationName: orgSlug, // Send SLUG, not raw name
           department: 'Management'
         })
       });

@@ -29,6 +29,14 @@ CREATE TABLE IF NOT EXISTS public.user_profiles (
   CONSTRAINT user_profiles_role_check CHECK ("role" IN ('user', 'admin', 'superadmin'))
 );
 
+-- Add constraint to enforce slugified organization names (lowercase, numbers, hyphens only)
+ALTER TABLE public.user_profiles 
+  DROP CONSTRAINT IF EXISTS user_profiles_org_format_check;
+
+ALTER TABLE public.user_profiles 
+  ADD CONSTRAINT user_profiles_org_format_check 
+  CHECK ("organizationName" ~ '^[a-z0-9-]+$');
+
 -- Create projects table
 CREATE TABLE IF NOT EXISTS public.projects (
   id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,

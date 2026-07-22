@@ -180,7 +180,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               password, 
               name, 
               role,
-              organizationName: org, 
+              organizationName: orgSlug, 
               department: dept 
             })
           });
