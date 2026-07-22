@@ -20,6 +20,7 @@ export default function AuthPage() {
   const [tab, setTab] = useState<'login'>('login');
   const [isOnline, setIsOnline] = useState(true);
   const [showSetupGuide, setShowSetupGuide] = useState(false);
+  const [adminExists, setAdminExists] = useState(false);
   
   const [showPassword, setShowPassword] = useState(false);
 
@@ -52,7 +53,9 @@ export default function AuthPage() {
         .eq('isAdmin', true)
         .limit(1);
         
-      setShowSetupGuide(!data?.length);
+      const hasAdmin = !!data?.length;
+      setShowSetupGuide(!hasAdmin);
+      setAdminExists(hasAdmin);
     };
     
     if (!isLoading) checkSetup();
@@ -266,7 +269,9 @@ export default function AuthPage() {
                 <p className="text-blue-200 text-xs">First administrator registration required.</p>
               </div>
             </div>
-            <Button onClick={handleInitializeAdmin} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold h-10 text-sm" disabled={loading}>Create Administrator</Button>
+            <Button onClick={handleInitializeAdmin} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold h-10 text-sm" disabled={loading || adminExists}>
+              {adminExists ? 'Administrator Already Exists' : 'Create Administrator'}
+            </Button>
             <p className="text-[10px] text-blue-300 text-center font-medium mt-2">Default S/N: ACRUX-ADMIN-01 | PASS: Admin@1234 (8+ chars required)</p>
           </div>
         )}

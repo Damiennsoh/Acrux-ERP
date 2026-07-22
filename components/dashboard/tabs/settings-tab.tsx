@@ -199,7 +199,7 @@ export function SettingsTab() {
       newUser.staffId,
       newUser.password,
       newUser.role,
-      user?.organizationName,
+      user?.organizationName || 'ACRUX IT SOLUTIONS',
       newUser.department
     );
 
@@ -225,6 +225,22 @@ export function SettingsTab() {
   };
 
   const handleUpdateRole = async (userId: string, newRole: string) => {
+    const currentUsers = users;
+    const targetUser = currentUsers.find(u => u.id === userId);
+    const adminCount = currentUsers.filter(u => u.isAdmin).length;
+    
+    // SAFETY CHECK: Prevent revoking the LAST admin
+    if (targetUser?.isAdmin && adminCount <= 1) {
+      toast.error('Cannot revoke the last administrator. Create a new admin first.');
+      return;
+    }
+
+    // PRIVILEGE CHECK: Only Superadmins can modify Superadmins
+    if (targetUser?.role === 'superadmin' && user?.role !== 'superadmin') {
+      toast.error('Only Superadmins can modify Superadmin accounts.');
+      return;
+    }
+
     const result = await updateUserRole(userId, newRole);
     if (result.success) {
       toast.success('User role updated successfully');
@@ -482,6 +498,9 @@ export function SettingsTab() {
                       <SelectContent>
                         <SelectItem value="user">User</SelectItem>
                         <SelectItem value="admin">Admin</SelectItem>
+                        {user?.role === 'superadmin' && (
+                          <SelectItem value="superadmin">Superadmin</SelectItem>
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
@@ -505,41 +524,57 @@ export function SettingsTab() {
                   <p className="text-sm text-muted-foreground">No users found</p>
                 ) : (
                   <div className="space-y-2">
-                    {users.map((u) => (
-                      <div key={u.id} className="flex items-center justify-between p-3 border border-border rounded-lg">
-                        <div className="flex-1">
-                          <p className="font-medium text-sm">{u.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {u.id === user?.id ? u.staffId : '***'} • {u.department}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Select
-                            value={u.role}
-                            onValueChange={(value) => handleUpdateRole(u.id, value)}
-                            disabled={u.id === user?.id}
-                          >
-                            <SelectTrigger className="w-24 h-8">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="user">User</SelectItem>
-                              <SelectItem value="admin">Admin</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          {u.id !== user?.id && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleDeleteUser(u.id)}
-                              className="h-8 w-8 text-destructive hover:text-destructive"
+                    {users.map((u) => {
+                      const isAdmin = u.role === 'admin' || u.isAdmin;
+                      const isSuperadmin = u.role === 'superadmin';
+                      const adminCount = users.filter(x => x.role === 'admin' || x.isAdmin).length;
+                      const isLastAdmin = isAdmin && adminCount <= 1;
+                      const canModify = !isSuperadmin || user?.role === 'superadmin';
+
+                      return (
+                        <div key={u.id} className="flex items-center justify-between p-3 border border-border rounded-lg">
+                          <div className="flex-1">
+                            <p className="font-medium text-sm flex items-center gap-2">
+                              {u.name}
+                              {isSuperadmin && <span className="text-yellow-500">👑</span>}
+                              {isAdmin && !isSuperadmin && <span className="text-blue-500">🛡️</span>}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {u.id === user?.id ? u.staffId : '***'} • {u.department}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Select
+                              value={u.role}
+                              onValueChange={(value) => handleUpdateRole(u.id, value)}
+                              disabled={!canModify || isLastAdmin || u.id === user?.id}
                             >
-                              <UserMinus className="w-4 h-4" />
-                            </Button>
-                          )}
+                              <SelectTrigger className="w-28 h-8">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="user">User</SelectItem>
+                                <SelectItem value="admin">Admin</SelectItem>
+                                {user?.role === 'superadmin' && (
+                                  <SelectItem value="superadmin">Superadmin</SelectItem>
+                                )}
+                              </SelectContent>
+                            </Select>
+                            {u.id !== user?.id && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleDeleteUser(u.id)}
+                                disabled={!canModify || isLastAdmin}
+                                className="h-8 w-8 text-destructive hover:text-destructive disabled:opacity-30"
+                              >
+                                <UserMinus className="w-4 h-4" />
+                              </Button>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
