@@ -1,333 +1,786 @@
-You are absolutely right. The hybrid approach is causing data fragmentation because your `user_profiles` table in Supabase is empty, while your authentication users exist in Supabase Auth.
+You are absolutely correct. Relying on a single "Admin" role is a critical architectural flaw for an ERP system. If that one admin account is compromised, deleted, or locked out, your entire organization loses control of the system.
 
-Switching to a **purely online-first architecture** is the correct decision here. It eliminates IndexedDB sync conflicts, ensures a single source of truth (Supabase), and simplifies your codebase significantly.
+Here is the recommended **Three-Tier Role Architecture** for ACRUX ERP, designed specifically to prevent the "orphaned user" scenario you described:
 
-Here is the complete migration plan to remove IndexedDB dependency for user management and fix your current issues:
+### 1. The Three Roles & Their Functions
 
-### 1. Fix Supabase Schema & RLS (One-Time Setup)
-First, ensure your `user_profiles` table matches what your app expects. Run this in Supabase SQL Editor:
+| Role | Icon | Can Do | Cannot Do |
+| :--- | :--- | :--- | :--- |
+| **User** (Staff) |  | View assigned data, submit expenses/labor, edit own profile, change own password | Create users, delete records, access settings, view audit logs |
+| **Admin** (Manager) | 🛡️ | All User functions + Create/Delete Users, Revoke Admin rights, Manage Projects/Reports, View Audit Logs | Delete other Admins, Reset System, Access Superadmin-only security settings |
+| **Superadmin** (Owner) | 👑 | **ALL** Admin functions + Delete/Revoke other Admins, Reset System Authentication, Manage Organization Settings, Bypass all RLS restrictions | Nothing (Full God Mode) |
+
+### 2. The "Last Admin Standing" Safety Protocol
+
+To ensure **under no circumstance** all admins are deleted, you must implement these three safeguards in your code:
+
+#### A. Database-Level Constraint (Supabase RLS)
+Your DELETE policy for `user_profiles` must explicitly check if the target is an admin AND if they are the *last* admin:
 
 ```sql
--- Ensure all required columns exist
+-- In Supabase SQL Editor
+CREATE POLICY "Prevent deleting last admin" 
+ON public.user_profiles FOR DELETE 
+USING (
+  -- Allow deleting regular users freely
+  isAdmin = false 
+  OR 
+  -- Only allow deleting admins if there are OTHER admins remaining
+  (
+    isAdmin = true AND 
+    EXISTS (
+      SELECT 1 FROM public.user_profiles 
+      WHERE isAdmin = true AND id != auth.uid()
+    )
+  )
+);
+```
+
+#### B. Application-Level Guard (`auth-context.tsx`)
+Before allowing any role change or deletion, check the count:
+
+```typescript
+// In updateUserRole and deleteUser functions
+const safeUpdateRole = async (userId: string, newRole: string) => {
+  const currentUsers = await getUsers();
+  const adminCount = currentUsers.filter(u => u.isAdmin).length;
+  
+  // Prevent revoking the LAST admin's rights
+  if (currentUsers.find(u => u.id === userId)?.isAdmin && adminCount <= 1) {
+    return { success: false, error: 'Cannot revoke the last administrator. Create a new admin first.' };
+  }
+  
+  // Proceed with update...
+};
+```
+
+#### C. UI-Level Prevention (`settings-tab.tsx` & `page.tsx`)
+-   **Disable** the "Revoke Admin" button if it's the last admin.
+-   **Hide** the "Delete" button for the last admin.
+-   Show a warning badge: *"⚠️ Last Administrator - Cannot be removed"*
+
+### 3. Why You Need Superadmin Specifically
+
+| Scenario | Single Admin Risk | Superadmin Solution |
+| :--- | :--- | :--- |
+| Admin leaves company | No one can remove their access | Superadmin revokes instantly |
+| Admin account hacked | Hacker has full control forever | Superadmin resets password/access |
+| Admin makes mistake | No higher authority to fix it | Superadmin overrides/corrects |
+| System reset needed | Requires manual DB intervention | Superadmin triggers via UI safely |
+| New org setup | First admin has unlimited power | Superadmin creates first admin, then steps back |
+
+### 4. Implementation Priority
+
+1.  **Add `role` enum to `user_profiles`:** `'user' | 'admin' | 'superadmin'`
+2.  **Update RLS policies** to distinguish between admin and superadmin permissions
+3.  **Modify `register` function** to only allow Superadmin to create other Superadmins
+4.  **Add "Last Admin" checks** to all destructive operations
+5.  **Update UI** to show role badges clearly (👑 Superadmin, 🛡️ Admin, 👤 User)
+
+This structure ensures your ERP remains secure, recoverable, and professionally managed. Would you like me to provide the updated SQL schema and RLS policies for this three-tier system?
+
+
+
+
+
+Here is the complete, corrected SQL schema and RLS policies implementing the **Three-Tier Role Architecture** (User, Admin, Superadmin) with the critical **"Last Admin Standing"** safety protocol.
+
+### 1. Updated Schema & Safety Constraints
+Run this first to add the `superadmin` role and enforce database-level protection against deleting the last admin.
+
+```sql
+-- ==========================================
+-- THREE-TIER ROLE ARCHITECTURE SCHEMA
+-- ==========================================
+
+-- 1. Ensure user_profiles has the correct role constraints
 ALTER TABLE public.user_profiles 
-  ADD COLUMN IF NOT EXISTS "organizationName" text,
-  ADD COLUMN IF NOT EXISTS "department" text DEFAULT 'General',
   ADD COLUMN IF NOT EXISTS "role" text DEFAULT 'user',
-  ADD COLUMN IF NOT EXISTS "isAdmin" boolean DEFAULT false,
-  ADD COLUMN IF NOT EXISTS "staffId" text;
+  ADD COLUMN IF NOT EXISTS "isAdmin" boolean DEFAULT false;
+
+-- Add check constraint to prevent invalid roles
+ALTER TABLE public.user_profiles 
+  DROP CONSTRAINT IF EXISTS user_profiles_role_check;
+ALTER TABLE public.user_profiles 
+  ADD CONSTRAINT user_profiles_role_check 
+  CHECK ("role" IN ('user', 'admin', 'superadmin'));
+
+-- 2. CRITICAL SAFETY: Prevent deleting the LAST admin/superadmin
+-- This function checks if a deletion would leave the org without an admin
+CREATE OR REPLACE FUNCTION public.check_last_admin_protection()
+RETURNS TRIGGER AS $$
+DECLARE
+  admin_count int;
+BEGIN
+  -- Only check when deleting an admin or superadmin
+  IF OLD."isAdmin" = true THEN
+    SELECT COUNT(*) INTO admin_count 
+    FROM public.user_profiles 
+    WHERE "organizationName" = OLD."organizationName" 
+      AND "isAdmin" = true 
+      AND id != OLD.id;
+      
+    IF admin_count = 0 THEN
+      RAISE EXCEPTION 'Cannot delete the last administrator for organization %', OLD."organizationName";
+    END IF;
+  END IF;
+  RETURN OLD;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Attach trigger to user_profiles
+DROP TRIGGER IF EXISTS trg_prevent_delete_last_admin ON public.user_profiles;
+CREATE TRIGGER trg_prevent_delete_last_admin
+  BEFORE DELETE ON public.user_profiles
+  FOR EACH ROW EXECUTE FUNCTION public.check_last_admin_protection();
+```
+
+### 2. Non-Recursive RLS Policies (JWT-Based)
+These policies use `auth.jwt()` metadata instead of querying the table itself, preventing infinite recursion while enforcing three-tier permissions.
+
+```sql
+-- ==========================================
+-- THREE-TIER RLS POLICIES (NO RECURSION)
+-- ==========================================
 
 -- Enable RLS
 ALTER TABLE public.user_profiles ENABLE ROW LEVEL SECURITY;
 
--- Drop old policies
-DROP POLICY IF EXISTS "Users can view own org profiles" ON public.user_profiles;
-DROP POLICY IF EXISTS "Admins can update org profiles" ON public.user_profiles;
-DROP POLICY IF EXISTS "Admins can delete org profiles" ON public.user_profiles;
-DROP POLICY IF EXISTS "Users and admins can insert profiles" ON public.user_profiles;
+-- Drop ALL existing policies to start clean
+DO $$ 
+DECLARE pol RECORD;
+BEGIN
+  FOR pol IN (SELECT policyname FROM pg_policies WHERE tablename = 'user_profiles' AND schemaname = 'public') LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.user_profiles', pol.policyname);
+  END LOOP;
+END $$;
 
--- NEW ONLINE-FIRST POLICIES
-CREATE POLICY "View own org profiles" ON public.user_profiles FOR SELECT USING (
-  "organizationName" = (auth.jwt() ->> 'organizationName')::text
-);
+-- SELECT: All users can see profiles in their own org
+CREATE POLICY "View own org profiles" 
+ON public.user_profiles FOR SELECT 
+USING ("organizationName" = (auth.jwt() ->> 'organizationName')::text);
 
-CREATE POLICY "Insert own profile" ON public.user_profiles FOR INSERT WITH CHECK (
+-- INSERT: Admins/Superadmins can create users in their org; Users can only insert themselves during signup
+CREATE POLICY "Insert profiles" 
+ON public.user_profiles FOR INSERT 
+WITH CHECK (
   auth.uid() = id OR 
   ((auth.jwt() ->> 'isAdmin')::boolean = true AND "organizationName" = (auth.jwt() ->> 'organizationName')::text)
 );
 
-CREATE POLICY "Update own or org profiles" ON public.user_profiles FOR UPDATE USING (
-  auth.uid() = id OR 
-  ((auth.jwt() ->> 'isAdmin')::boolean = true AND "organizationName" = (auth.jwt() ->> 'organizationName')::text)
-) WITH CHECK (
-  auth.uid() = id OR 
-  ((auth.jwt() ->> 'isAdmin')::boolean = true AND "organizationName" = (auth.jwt() ->> 'organizationName')::text)
+-- UPDATE: 
+-- - Superadmins can update ANYONE
+-- - Admins can update anyone EXCEPT superadmins  
+-- - Users can only update themselves
+CREATE POLICY "Update profiles by tier" 
+ON public.user_profiles FOR UPDATE 
+USING (
+  -- Self-update always allowed
+  auth.uid() = id OR
+  -- Superadmin can update anyone in org
+  ((auth.jwt() ->> 'role')::text = 'superadmin' AND "organizationName" = (auth.jwt() ->> 'organizationName')::text) OR
+  -- Admin can update non-superadmins in org
+  ((auth.jwt() ->> 'role')::text = 'admin' AND "organizationName" = (auth.jwt() ->> 'organizationName')::text AND (OLD."role")::text != 'superadmin')
+)
+WITH CHECK (
+  auth.uid() = id OR
+  ((auth.jwt() ->> 'role')::text = 'superadmin' AND "organizationName" = (auth.jwt() ->> 'organizationName')::text) OR
+  ((auth.jwt() ->> 'role')::text = 'admin' AND "organizationName" = (auth.jwt() ->> 'organizationName')::text AND "role" != 'superadmin')
 );
 
-CREATE POLICY "Delete org profiles" ON public.user_profiles FOR DELETE USING (
-  (auth.jwt() ->> 'isAdmin')::boolean = true AND "organizationName" = (auth.jwt() ->> 'organizationName')::text
+-- DELETE: Only admins/superadmins can delete, but NEVER the last admin (enforced by trigger above)
+CREATE POLICY "Delete profiles by tier" 
+ON public.user_profiles FOR DELETE 
+USING (
+  ((auth.jwt() ->> 'isAdmin')::boolean = true AND "organizationName" = (auth.jwt() ->> 'organizationName')::text)
 );
 ```
 
-### 2. Update `auth-context.tsx` (Remove IndexedDB)
-Replace your entire `auth-context.tsx` with this streamlined online-only version:
+### 3. Application-Level Guard (`auth-context.tsx`)
+Add this safety check to your `updateUserRole` and `deleteUser` functions to provide immediate UI feedback before hitting the database:
 
-```tsx
-'use client';
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { supabase } from './supabase';
-import { slugifyOrg } from './utils/org';
+```typescript
+// In auth-context.tsx, add these guards:
 
-export interface AuthUser {
-  id: string;
-  staffId: string;
-  name: string;
-  role: string;
-  isAdmin: boolean;
-  organizationName: string;
-  department: string;
-}
+const updateUserRole = async (userId: string, newRole: string) => {
+  const currentUsers = await getUsers();
+  const targetUser = currentUsers.find(u => u.id === userId);
+  const adminCount = currentUsers.filter(u => u.isAdmin).length;
+  
+  // PREVENT REVOKING THE LAST ADMIN
+  if (targetUser?.isAdmin && adminCount <= 1) {
+    return { success: false, error: 'Cannot revoke the last administrator. Create a new admin first.' };
+  }
+  
+  // PREVENT NON-SUPERADMIN FROM DEMOTING SUPERADMIN
+  if (targetUser?.role === 'superadmin' && state.user?.role !== 'superadmin') {
+    return { success: false, error: 'Only Superadmins can modify Superadmin accounts.' };
+  }
 
-interface AuthContextType {
-  user: AuthUser | null;
-  isLoading: boolean;
-  login: (staffId: string, password: string, org: string) => Promise<{ success: boolean; error?: string }>;
-  logout: () => void;
-  register: (name: string, staffId: string, password: string, role: string, org: string, dept: string) => Promise<{ success: boolean; error?: string }>;
-  getUsers: () => Promise<AuthUser[]>;
-  updateUserRole: (userId: string, role: string) => Promise<{ success: boolean; error?: string }>;
-  deleteUser: (userId: string) => Promise<{ success: boolean; error?: string }>;
-  updateUserProfile: (userId: string, updates: Partial<AuthUser>) => Promise<{ success: boolean; error?: string }>;
-  changePassword: (password: string) => Promise<{ success: boolean; error?: string }>;
-}
-
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-const getDummyEmail = (staffId: string) => `${staffId.toLowerCase().replace(/[^a-z0-9]/g, '')}@acrux.local`;
-
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-
-  // Restore session on mount
-  useEffect(() => {
-    const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        await loadUserProfile(session.user.id, session.user.user_metadata);
-      }
-      setIsLoading(false);
-    };
-    init();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (session?.user) {
-        await loadUserProfile(session.user.id, session.user.user_metadata);
-      } else {
-        setUser(null);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const loadUserProfile = async (userId: string, metadata: any) => {
-    // Fetch from Supabase directly - no more IndexedDB!
-    const { data: profile } = await supabase
+  // Update local DB optimistically
+  await userDB.updateUser(userId, { role: newRole, isAdmin: newRole !== 'user' });
+  
+  // Sync to Supabase
+  if (navigator.onLine) {
+    const { error } = await supabase
       .from('user_profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
-
-    if (profile) {
-      setUser({
-        id: profile.id,
-        staffId: profile.staffId || metadata.staffId,
-        name: profile.name || metadata.name,
-        role: profile.role || metadata.role,
-        isAdmin: profile.isAdmin ?? metadata.isAdmin,
-        organizationName: profile.organizationName || metadata.organizationName,
-        department: profile.department || metadata.department,
-      });
-    }
-  };
-
-  const login = async (staffId: string, password: string, org: string) => {
-    try {
-      const email = getDummyEmail(staffId);
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      .update({ role: newRole, isAdmin: newRole !== 'user' })
+      .eq('id', userId);
       
-      if (error || !data.session) {
-        return { success: false, error: error?.message || 'Invalid credentials' };
-      }
-
-      // Verify organization matches
-      const meta = data.user.user_metadata || {};
-      if (slugifyOrg(meta.organizationName) !== slugifyOrg(org)) {
-        await supabase.auth.signOut();
-        return { success: false, error: 'Organization mismatch' };
-      }
-
-      await loadUserProfile(data.user.id, meta);
-      return { success: true };
-    } catch (err: any) {
-      return { success: false, error: err.message };
-    }
-  };
-
-  const register = async (name: string, staffId: string, password: string, role: string, org: string, dept: string) => {
-    try {
-      const email = getDummyEmail(staffId);
-      const orgSlug = slugifyOrg(org);
-      
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            staffId,
-            name,
-            role,
-            isAdmin: role === 'admin',
-            organizationName: orgSlug,
-            department: dept,
-          }
-        }
+    if (error) {
+      // Revert on failure
+      await userDB.updateUser(userId, { 
+        role: targetUser?.role || 'user', 
+        isAdmin: targetUser?.isAdmin || false 
       });
+      return { success: false, error: error.message };
+    }
+  }
+  return { success: true };
+};
 
-      if (error) return { success: false, error: error.message };
-      if (!data.user) return { success: false, error: 'Registration failed' };
+const deleteUser = async (userId: string) => {
+  const currentUsers = await getUsers();
+  const targetUser = currentUsers.find(u => u.id === userId);
+  const adminCount = currentUsers.filter(u => u.isAdmin).length;
+  
+  // PREVENT DELETING THE LAST ADMIN
+  if (targetUser?.isAdmin && adminCount <= 1) {
+    return { success: false, error: 'Cannot delete the last administrator. Create a new admin first.' };
+  }
 
-      // Create profile in Supabase immediately
-      const { error: profileError } = await supabase.from('user_profiles').insert({
+  await userDB.deleteUser(userId);
+  if (navigator.onLine) {
+    const { error } = await supabase.from('user_profiles').delete().eq('id', userId);
+    if (error) return { success: false, error: error.message };
+  }
+  return { success: true };
+};
+```
+
+### 4. UI Updates Required
+
+| Component | Change Needed |
+| :--- | :--- |
+| `settings-tab.tsx` | Add `'superadmin'` option to role Select dropdown |
+| `page.tsx` (User Mgmt) | Show 👑 icon for superadmin, 🛡️ for admin,  for user |
+| `page.tsx` (User Mgmt) | Disable "Revoke Admin" button if `adminCount === 1` |
+| `page.tsx` (Auth) | Initial setup creates `superadmin`, not just `admin` |
+
+### ️ Critical Notes
+
+1.  **Initial Setup Must Create Superadmin:** Update `handleInitializeAdmin` in `page.tsx` to register as `role: 'superadmin'`, not `'admin'`. Otherwise, you'll have no superadmin to manage admins later.
+2.  **JWT Metadata Must Include `role`:** Your `/api/create-admin/route.ts` and `register` function must store `"role": "superadmin"` in `user_metadata` so RLS policies work correctly.
+3.  **Trigger vs Policy:** The PostgreSQL trigger (`check_last_admin_protection`) is your **ultimate safety net**. Even if someone bypasses the app UI and deletes directly via Supabase Dashboard, the trigger will block it.
+4.  **Test Thoroughly:** Before deploying, test these scenarios:
+    -   Create 2 admins → revoke one → should succeed
+    -   Create 1 admin → try to revoke → should fail with toast
+    -   Superadmin tries to demote another superadmin → should fail
+    -   Regular user tries to delete admin → should fail via RLS
+
+This architecture gives you enterprise-grade security while maintaining the simplicity of your Staff ID-based authentication system.
+
+
+
+Here are the updated guards for `auth-context.tsx`. These functions now explicitly check for **Superadmin** privileges and enforce the **"Last Admin Standing"** rule *before* attempting any database operations. This prevents unnecessary API calls that would otherwise fail due to your new PostgreSQL trigger or RLS policies.
+
+### ✅ Updated Guards in `auth-context.tsx`
+
+Replace the existing `updateUserRole`, `deleteUser`, and `register` functions with these protected versions:
+
+```typescript
+// In auth-context.tsx, replace updateUserRole with this version:
+
+const updateUserRole = async (userId: string, newRole: string) => {
+  // 1. SAFETY CHECK: Prevent revoking the LAST admin/superadmin
+  const currentUsers = await getUsers();
+  const targetUser = currentUsers.find(u => u.id === userId);
+  const adminCount = currentUsers.filter(u => u.isAdmin).length;
+  
+  if (targetUser?.isAdmin && adminCount <= 1) {
+    return { 
+      success: false, 
+      error: 'Cannot revoke the last administrator. Create a new admin first.' 
+    };
+  }
+
+  // 2. PRIVILEGE CHECK: Only Superadmins can modify Superadmin accounts
+  if (targetUser?.role === 'superadmin' && state.user?.role !== 'superadmin') {
+    return { 
+      success: false, 
+      error: 'Only Superadmins can modify Superadmin accounts.' 
+    };
+  }
+
+  // 3. PRIVILEGE CHECK: Regular admins cannot promote others to superadmin
+  if (newRole === 'superadmin' && state.user?.role !== 'superadmin') {
+    return { 
+      success: false, 
+      error: 'Only Superadmins can create Superadmin accounts.' 
+    };
+  }
+
+  // 4. Update Local DB Optimistically
+  await userDB.updateUser(userId, { role: newRole, isAdmin: newRole !== 'user' });
+  
+  // 5. Sync to Supabase
+  if (navigator.onLine) {
+    const { error } = await supabase
+      .from('user_profiles')
+      .update({ role: newRole, isAdmin: newRole !== 'user' })
+      .eq('id', userId);
+      
+    if (error) {
+      console.error('[AuthContext] Role update failed on Supabase:', error);
+      // Revert local change on failure
+      await userDB.updateUser(userId, { 
+        role: targetUser?.role || 'user', 
+        isAdmin: targetUser?.isAdmin || false 
+      });
+      return { success: false, error: error.message };
+    }
+  }
+  return { success: true };
+};
+
+// Replace deleteUser with this version:
+
+const deleteUser = async (userId: string) => {
+  // 1. SAFETY CHECK: Prevent deleting the LAST admin/superadmin
+  const currentUsers = await getUsers();
+  const targetUser = currentUsers.find(u => u.id === userId);
+  const adminCount = currentUsers.filter(u => u.isAdmin).length;
+  
+  if (targetUser?.isAdmin && adminCount <= 1) {
+    return { 
+      success: false, 
+      error: 'Cannot delete the last administrator. Create a new admin first.' 
+    };
+  }
+
+  // 2. PRIVILEGE CHECK: Only Superadmins can delete Superadmin accounts
+  if (targetUser?.role === 'superadmin' && state.user?.role !== 'superadmin') {
+    return { 
+      success: false, 
+      error: 'Only Superadmins can delete Superadmin accounts.' 
+    };
+  }
+
+  // 3. Delete from Local DB
+  await userDB.deleteUser(userId);
+  
+  // 4. Delete from Supabase
+  if (navigator.onLine) {
+    const { error } = await supabase
+      .from('user_profiles')
+      .delete()
+      .eq('id', userId);
+      
+    if (error) {
+      console.error('[AuthContext] User deletion failed on Supabase:', error);
+      return { success: false, error: error.message };
+    }
+  }
+  return { success: true };
+};
+
+// Update register function to handle superadmin creation securely:
+
+const register = async (
+  name: string,
+  staffId: string,
+  password: string,
+  role: string,
+  organizationName: string = "ACRUX IT SOLUTIONS",
+  department: string = "General"
+) => {
+  // PRIVILEGE CHECK: Only Superadmins can create other Superadmins
+  if (role === 'superadmin' && state.user?.role !== 'superadmin') {
+    return { 
+      success: false, 
+      error: 'Only Superadmins can create Superadmin accounts.' 
+    };
+  }
+
+  // For initial system setup OR when creating regular admins/users
+  if (role === 'admin' || role === 'user' || !state.user) {
+    try {
+      const response = await fetch('/api/create-admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          staffId,
+          password,
+          name,
+          role, // Pass role to API
+          organizationName,
+          department
+        })
+      });
+      
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        return { success: false, error: data.error || 'Failed to create user' };
+      }
+      
+      // Add to local DB...
+      await userDB.addUser({
+        username: staffId,
+        name,
+        passwordHash: 'managed-by-supabase',
+        role: role as any,
+        isAdmin: role !== 'user',
+        organizationName,
+        department,
+        staffId
+      });
+      
+      // Add to IndexedDB user_profiles store
+      const db = await getDB();
+      await db.put('user_profiles', {
         id: data.user.id,
         staffId,
         name,
         role,
-        isAdmin: role === 'admin',
-        organizationName: orgSlug,
-        department: dept,
-      });
-
-      if (profileError) {
-        // Clean up auth user if profile creation fails
-        await supabase.auth.admin.deleteUser(data.user.id);
-        return { success: false, error: profileError.message };
-      }
-
+        isAdmin: role !== 'user',
+        organizationName: slugifyOrg(organizationName),
+        department,
+        defaultCurrency: 'USD'
+      } as any);
+      
       return { success: true };
-    } catch (err: any) {
-      return { success: false, error: err.message };
+    } catch (err) {
+      return { success: false, error: 'Network error during user creation' };
     }
-  };
+  }
 
-  const getUsers = async () => {
-    if (!user) return [];
-    
-    const { data, error } = await supabase
-      .from('user_profiles')
-      .select('*')
-      .eq('organizationName', slugifyOrg(user.organizationName));
-
-    if (error) {
-      console.error('Failed to fetch users:', error);
-      return [];
-    }
-
-    return data.map(p => ({
-      id: p.id,
-      staffId: p.staffId,
-      name: p.name,
-      role: p.role,
-      isAdmin: p.isAdmin,
-      organizationName: p.organizationName,
-      department: p.department,
-    }));
-  };
-
-  const updateUserRole = async (userId: string, role: string) => {
-    const { error } = await supabase
-      .from('user_profiles')
-      .update({ role, isAdmin: role === 'admin' })
-      .eq('id', userId);
-
-    if (error) return { success: false, error: error.message };
-    return { success: true };
-  };
-
-  const deleteUser = async (userId: string) => {
-    // Delete profile first (RLS allows this)
-    const { error: profileError } = await supabase
-      .from('user_profiles')
-      .delete()
-      .eq('id', userId);
-
-    if (profileError) return { success: false, error: profileError.message };
-
-    // Note: Deleting auth user requires service role key (do this via Edge Function if needed)
-    // For now, we just disable the profile
-    return { success: true };
-  };
-
-  const updateUserProfile = async (userId: string, updates: Partial<AuthUser>) => {
-    const { error } = await supabase
-      .from('user_profiles')
-      .update(updates)
-      .eq('id', userId);
-
-    if (error) return { success: false, error: error.message };
-    
-    // Update current user state if self
-    if (user?.id === userId) {
-      setUser(prev => prev ? { ...prev, ...updates } : null);
-    }
-    
-    return { success: true };
-  };
-
-  const changePassword = async (password: string) => {
-    const { error } = await supabase.auth.updateUser({ password });
-    if (error) return { success: false, error: error.message };
-    return { success: true };
-  };
-
-  const logout = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-  };
-
-  return (
-    <AuthContext.Provider value={{
-      user, isLoading, login, logout, register, getUsers,
-      updateUserRole, deleteUser, updateUserProfile, changePassword
-    }}>
-      {children}
-    </AuthContext.Provider>
-  );
-}
-
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) throw new Error('useAuth must be used within AuthProvider');
-  return context;
+  // Fallback for edge cases...
+  return { success: false, error: 'Invalid registration request' };
 };
 ```
 
-### 3. Update `page.tsx` (Auth Page)
-Remove all IndexedDB references from your auth page:
+### 🔑 Why These Guards Are Critical
+
+| Guard | Purpose | Prevents |
+| :--- | :--- | :--- |
+| Last Admin Check | Counts admins before revocation/deletion | Orphaned organization with no admin access |
+| Superadmin Modification Check | Verifies caller is superadmin before touching superadmin accounts | Privilege escalation by regular admins |
+| Superadmin Creation Check | Ensures only superadmins can create superadmins | Unauthorized superadmin proliferation |
+| Optimistic Local Update + Revert | Updates UI immediately but reverts on API failure | Stale UI state when permissions block remote operation |
+
+### ⚠️ Important Notes
+
+1.  **Initial Setup Must Create Superadmin:** Your `handleInitializeAdmin` in `page.tsx` should call `register(..., 'superadmin', ...)` instead of `'admin'`. Otherwise, you'll have no superadmin to manage admins later.
+2.  **JWT Metadata Must Include Role:** Ensure `/api/create-admin/route.ts` stores `"role": role` in `user_metadata` so RLS policies work correctly.
+3.  **Trigger Is Ultimate Safety Net:** Even if someone bypasses these app-level guards (e.g., via Supabase Dashboard), the PostgreSQL trigger `trg_prevent_delete_last_admin` will still block deletion of the last admin.
+4.  **UI Should Reflect Guards:** Disable/hide action buttons in `page.tsx` and `settings-tab.tsx` when guards would fail, providing immediate visual feedback to users.
+
+Would you like me to also provide the updated UI components that visually disable actions based on these guards?
+
+
+
+
+Here are the updated UI components that integrate the **Three-Tier Role Architecture** and **"Last Admin Standing"** safety guards. These changes ensure users cannot even attempt actions that would violate your security policies.
+
+### 1. Updated `page.tsx` (User Management)
+This version adds Superadmin badges, disables role toggling for the last admin, and prevents non-Superadmins from modifying Superadmin accounts.
 
 ```tsx
-// In checkInitialState useEffect, replace with:
-useEffect(() => {
-  const checkSetup = async () => {
-    if (!navigator.onLine) return;
-    
-    // Check if ANY admin exists in Supabase
-    const { data } = await supabase
-      .from('user_profiles')
-      .select('id')
-      .eq('isAdmin', true)
-      .limit(1);
-      
-    setShowSetupGuide(!data?.length);
+// Replace the existing UserManagementPage component in page.tsx with this:
+
+export default function UserManagementPage() {
+  const { user: currentUser, getUsers, updateUserRole, deleteUser } = useAuth();
+  const [users, setUsers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  // ... keep existing fetchUsers, useEffect, filteredUsers logic ...
+
+  const handleToggleRole = async (targetUser: any) => {
+    // SAFETY GUARD: Prevent revoking the LAST admin
+    const adminCount = users.filter(u => u.isAdmin).length;
+    if (targetUser.isAdmin && adminCount <= 1) {
+      toast.error('Cannot revoke the last administrator. Create a new admin first.');
+      return;
+    }
+
+    // PRIVILEGE GUARD: Only Superadmins can modify Superadmins
+    if (targetUser.role === 'superadmin' && currentUser?.role !== 'superadmin') {
+      toast.error('Only Superadmins can modify Superadmin accounts.');
+      return;
+    }
+
+    const newRole = targetUser.role === 'admin' ? 'user' : 'admin';
+    if (!confirm(`Are you sure you want to ${newRole === 'admin' ? 'promote' : 'revoke'} ${targetUser.name}?`)) return;
+
+    try {
+      setActionLoading(targetUser.id);
+      await updateUserRole(targetUser.id, newRole);
+      toast.success(`${targetUser.name} role updated to ${newRole}`);
+      await fetchUsers();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to update role');
+    } finally {
+      setActionLoading(null);
+    }
   };
-  
-  if (!isLoading) checkSetup();
-}, [isLoading]);
+
+  const handleDelete = async (targetUser: any) => {
+    // SAFETY GUARD: Prevent deleting the LAST admin
+    const adminCount = users.filter(u => u.isAdmin).length;
+    if (targetUser.isAdmin && adminCount <= 1) {
+      toast.error('Cannot delete the last administrator. Create a new admin first.');
+      return;
+    }
+
+    // PRIVILEGE GUARD: Only Superadmins can delete Superadmins
+    if (targetUser.role === 'superadmin' && currentUser?.role !== 'superadmin') {
+      toast.error('Only Superadmins can delete Superadmin accounts.');
+      return;
+    }
+
+    if (!confirm(`CAUTION: Delete ${targetUser.name}'s account? This cannot be undone.`)) return;
+
+    try {
+      setActionLoading(targetUser.id);
+      const result = await deleteUser(targetUser.id);
+      if (result.success) {
+        toast.success(`${targetUser.name}'s account deleted.`);
+        await fetchUsers();
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to delete user');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // ... keep existing render logic, but update the Role Badge and Actions column below ...
+
+  return (
+    <div className="p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6 min-h-screen bg-slate-900">
+      {/* ... Header and Stats Cards remain unchanged ... */}
+
+      <Card className="bg-slate-800/40 backdrop-blur-xl border-slate-700/50 shadow-2xl overflow-hidden">
+        <CardContent className="p-0">
+          <table className="w-full text-left min-w-[600px]">
+            <thead>
+              <tr className="border-b border-slate-700 bg-slate-900/40">
+                <th className="px-6 py-4 text-xs font-bold text-white uppercase tracking-wider">Member</th>
+                <th className="px-6 py-4 text-xs font-bold text-white uppercase tracking-wider hidden sm:table-cell">Department</th>
+                <th className="px-6 py-4 text-xs font-bold text-white uppercase tracking-wider">Role</th>
+                <th className="px-6 py-4 text-xs font-bold text-white uppercase tracking-wider text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-700/50">
+              {filteredUsers.map((u) => (
+                <tr key={u.id} className="hover:bg-slate-700/20 transition-all duration-200">
+                  <td className="px-6 py-5">
+                    {/* ... Member cell remains unchanged ... */}
+                  </td>
+                  <td className="px-6 py-5 hidden sm:table-cell">
+                    {/* ... Department cell remains unchanged ... */}
+                  </td>
+                  
+                  {/* UPDATED ROLE BADGE FOR THREE TIERS */}
+                  <td className="px-6 py-5">
+                    {u.role === 'superadmin' ? (
+                      <Badge className="bg-gradient-to-r from-yellow-500 to-amber-600 text-white border-0 font-bold px-4 py-2 shadow-lg shadow-yellow-500/20">
+                         Superadmin
+                      </Badge>
+                    ) : u.role === 'admin' || u.isAdmin ? (
+                      <Badge className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white border-0 font-bold px-4 py-2 shadow-lg shadow-blue-500/20">
+                        🛡️ Administrator
+                      </Badge>
+                    ) : (
+                      <Badge className="bg-gradient-to-r from-slate-700 to-slate-600 text-slate-200 border-0 font-bold px-4 py-2">
+                        👤 Staff
+                      </Badge>
+                    )}
+                  </td>
+
+                  {/* UPDATED ACTIONS WITH SAFETY GUARDS */}
+                  <td className="px-6 py-5 text-right">
+                    {u.id !== currentUser?.id ? (
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleToggleRole(u)}
+                          disabled={!!actionLoading || 
+                            (u.role === 'superadmin' && currentUser?.role !== 'superadmin') ||
+                            (u.isAdmin && users.filter(x => x.isAdmin).length <= 1)
+                          }
+                          className="text-xs h-8"
+                        >
+                          {(u.role === 'admin' || u.isAdmin) ? 'Revoke Admin' : 'Make Admin'}
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="icon"
+                          onClick={() => handleDelete(u)}
+                          disabled={!!actionLoading || 
+                            (u.role === 'superadmin' && currentUser?.role !== 'superadmin') ||
+                            (u.isAdmin && users.filter(x => x.isAdmin).length <= 1)
+                          }
+                          className="h-8 w-8"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <Badge className="bg-slate-600/50 text-blue-200 border-0 italic px-3 py-1 text-xs">
+                        Managed externally
+                      </Badge>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
+      
+      {/* ... Edit Modal and Footer remain unchanged ... */}
+    </div>
+  );
+}
 ```
 
-### 4. Remove Migration Code
-Delete `lib/migrate-idb.ts` and remove the "Migrate & Sync" button from `settings-tab.tsx`. You no longer need it.
+### 2. Updated `settings-tab.tsx` (Users Tab)
+Add the same guards to the Settings tab's user management section:
 
-### Why This Fixes Everything:
-1.  **Single Source of Truth**: All user data lives in Supabase. No more sync conflicts.
-2.  **Empty Table Fixed**: Your `register` function now explicitly inserts into `user_profiles` during signup.
-3.  **RLS Works**: Policies now correctly use JWT metadata for org filtering.
-4.  **Simplified Code**: Removed ~200 lines of IndexedDB sync logic that was causing bugs.
+```tsx
+// In settings-tab.tsx, update the Users tab content:
 
-### Next Steps:
-1.  Run the SQL above in Supabase
-2.  Replace `auth-context.tsx` and update `page.tsx`
-3.  Test registration → verify user appears in Supabase Table Editor
-4.  Test login → verify User Management shows all users
+<TabsContent value="users" className="space-y-6">
+  <Card>
+    <CardHeader>
+      <CardTitle>User Management</CardTitle>
+      <CardDescription>Create and manage user accounts for your organization</CardDescription>
+    </CardHeader>
+    <CardContent className="space-y-4">
+      {/* Add Superadmin option to role dropdown */}
+      {showAddUser && (
+        <div className="space-y-4 p-4 border border-border rounded-lg bg-muted/50">
+          {/* ... existing form fields ... */}
+          <div>
+            <Label htmlFor="new-role">Role</Label>
+            <Select 
+              value={newUser.role} 
+              onValueChange={(value) => setNewUser({ ...newUser, role: value })}
+              disabled={user?.role !== 'superadmin' && newUser.role === 'superadmin'}
+            >
+              <SelectTrigger id="new-role">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="user">User</SelectItem>
+                <SelectItem value="admin">Admin</SelectItem>
+                {user?.role === 'superadmin' && (
+                  <SelectItem value="superadmin">Superadmin</SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+          {/* ... buttons ... */}
+        </div>
+      )}
 
-This gives you a clean, reliable online-first ERP system.
+      {/* Existing Users List with Guards */}
+      {users.length > 0 && (
+        <div className="space-y-2">
+          {users.map((u) => {
+            const isAdmin = u.role === 'admin' || u.isAdmin;
+            const isSuperadmin = u.role === 'superadmin';
+            const adminCount = users.filter(x => x.role === 'admin' || x.isAdmin).length;
+            const isLastAdmin = isAdmin && adminCount <= 1;
+            const canModify = !isSuperadmin || user?.role === 'superadmin';
+
+            return (
+              <div key={u.id} className="flex items-center justify-between p-3 border border-border rounded-lg">
+                <div className="flex-1">
+                  <p className="font-medium text-sm flex items-center gap-2">
+                    {u.name}
+                    {isSuperadmin && <span className="text-yellow-500">👑</span>}
+                    {isAdmin && !isSuperadmin && <span className="text-blue-500">️</span>}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {u.id === user?.id ? u.staffId : '***'} • {u.department}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Select
+                    value={u.role}
+                    onValueChange={(value) => handleUpdateRole(u.id, value)}
+                    disabled={!canModify || isLastAdmin || u.id === user?.id}
+                  >
+                    <SelectTrigger className="w-28 h-8">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="user">User</SelectItem>
+                      <SelectItem value="admin">Admin</SelectItem>
+                      {user?.role === 'superadmin' && (
+                        <SelectItem value="superadmin">Superadmin</SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                  {u.id !== user?.id && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleDeleteUser(u.id)}
+                      disabled={!canModify || isLastAdmin}
+                      className="h-8 w-8 text-destructive hover:text-destructive disabled:opacity-30"
+                    >
+                      <UserMinus className="w-4 h-4" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </CardContent>
+  </Card>
+</TabsContent>
+```
+
+### 🔑 Key Safety Features Implemented
+
+| Feature | Implementation | Purpose |
+| :--- | :--- | :--- |
+| Last Admin Protection | `disabled={isAdmin && adminCount <= 1}` | Prevents orphaning the organization |
+| Superadmin Shield | `disabled={targetRole === 'superadmin' && currentUser.role !== 'superadmin'}` | Prevents privilege escalation |
+| Visual Hierarchy | 👑 Yellow badge, 🛡️ Blue badge, 👤 Gray badge | Instant role recognition |
+| Optimistic Disable | Buttons disabled *before* API call | Better UX than error toasts |
+| Dual-Layer Guard | UI disable + `auth-context.tsx` guard | Defense in depth |
+
+### ️ Critical Next Steps
+
+1.  **Update Initial Setup:** Change `handleInitializeAdmin` in `page.tsx` to create a `superadmin`, not just an `admin`:
+    ```tsx
+    // In page.tsx, update handleInitializeAdmin call:
+    await register(
+      'System Administrator',
+      'ACRUX-ADMIN-01',
+      'Admin@1234',
+      'superadmin', // ← Changed from 'admin'
+      'ACRUX IT SOLUTIONS',
+      'Management'
+    );
+    ```
+
+2.  **Verify JWT Metadata:** Ensure `/api/create-admin/route.ts` stores `"role": "superadmin"` in `user_metadata` so RLS policies work correctly.
+
+3.  **Test All Scenarios:**
+    -   Create 2 admins → revoke one → should succeed
+    -   Create 1 admin → try to revoke → button disabled + toast error
+    -   Regular admin tries to promote someone to superadmin → option hidden/disabled
+    -   Superadmin promotes regular admin to superadmin → succeeds
+
+This gives you enterprise-grade security while maintaining the simplicity of your Staff ID-based authentication system.

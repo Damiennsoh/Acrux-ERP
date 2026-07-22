@@ -25,7 +25,8 @@ CREATE TABLE IF NOT EXISTS public.user_profiles (
   department text DEFAULT 'General',
   defaultCurrency text DEFAULT 'USD',
   created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now()
+  updated_at timestamptz DEFAULT now(),
+  CONSTRAINT user_profiles_role_check CHECK ("role" IN ('user', 'admin', 'superadmin'))
 );
 
 -- Create projects table
@@ -125,6 +126,39 @@ CREATE TABLE IF NOT EXISTS public.audit_logs (
   "orgId" text NOT NULL
 );
 
+-- ==========================================
+-- THREE-TIER ROLE ARCHITECTURE SAFETY
+-- ==========================================
+
+-- CRITICAL SAFETY: Prevent deleting the LAST admin/superadmin
+-- This function checks if a deletion would leave the org without an admin
+CREATE OR REPLACE FUNCTION public.check_last_admin_protection()
+RETURNS TRIGGER AS $$
+DECLARE
+  admin_count int;
+BEGIN
+  -- Only check when deleting an admin or superadmin
+  IF OLD."isAdmin" = true THEN
+    SELECT COUNT(*) INTO admin_count 
+    FROM public.user_profiles 
+    WHERE "organizationName" = OLD."organizationName" 
+      AND "isAdmin" = true 
+      AND id != OLD.id;
+      
+    IF admin_count = 0 THEN
+      RAISE EXCEPTION 'Cannot delete the last administrator for organization %', OLD."organizationName";
+    END IF;
+  END IF;
+  RETURN OLD;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Attach trigger to user_profiles
+DROP TRIGGER IF EXISTS trg_prevent_delete_last_admin ON public.user_profiles;
+CREATE TRIGGER trg_prevent_delete_last_admin
+  BEFORE DELETE ON public.user_profiles
+  FOR EACH ROW EXECUTE FUNCTION public.check_last_admin_protection();
+
 -- Enable RLS on all tables
 ALTER TABLE public.organizations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_profiles ENABLE ROW LEVEL SECURITY;
@@ -149,34 +183,38 @@ DROP POLICY IF EXISTS "Admins can update orgs" ON public.organizations;
 CREATE POLICY "Admins can update orgs" ON public.organizations FOR UPDATE
 USING ((auth.jwt() ->> 'isAdmin')::boolean = true);
 
--- User Profiles RLS Policies
+-- User Profiles RLS Policies (Three-Tier Architecture)
 DROP POLICY IF EXISTS "View own org profiles" ON public.user_profiles;
 CREATE POLICY "View own org profiles" ON public.user_profiles FOR SELECT
 USING ("organizationName" = (auth.jwt() ->> 'organizationName')::text);
 
 DROP POLICY IF EXISTS "Insert own profile" ON public.user_profiles;
-CREATE POLICY "Insert own profile" ON public.user_profiles FOR INSERT
+CREATE POLICY "Insert profiles" ON public.user_profiles FOR INSERT
 WITH CHECK (
   auth.uid() = id OR 
   ((auth.jwt() ->> 'isAdmin')::boolean = true AND "organizationName" = (auth.jwt() ->> 'organizationName')::text)
 );
 
 DROP POLICY IF EXISTS "Update own or org profiles" ON public.user_profiles;
-CREATE POLICY "Update own or org profiles" ON public.user_profiles FOR UPDATE
+CREATE POLICY "Update profiles by tier" ON public.user_profiles FOR UPDATE
 USING (
-  auth.uid() = id OR 
-  ((auth.jwt() ->> 'isAdmin')::boolean = true AND "organizationName" = (auth.jwt() ->> 'organizationName')::text)
+  -- Self-update always allowed
+  auth.uid() = id OR
+  -- Superadmin can update anyone in org
+  ((auth.jwt() ->> 'role')::text = 'superadmin' AND "organizationName" = (auth.jwt() ->> 'organizationName')::text) OR
+  -- Admin can update non-superadmins in org
+  ((auth.jwt() ->> 'role')::text = 'admin' AND "organizationName" = (auth.jwt() ->> 'organizationName')::text AND (OLD."role")::text != 'superadmin')
 )
 WITH CHECK (
-  auth.uid() = id OR 
-  ((auth.jwt() ->> 'isAdmin')::boolean = true AND "organizationName" = (auth.jwt() ->> 'organizationName')::text)
+  auth.uid() = id OR
+  ((auth.jwt() ->> 'role')::text = 'superadmin' AND "organizationName" = (auth.jwt() ->> 'organizationName')::text) OR
+  ((auth.jwt() ->> 'role')::text = 'admin' AND "organizationName" = (auth.jwt() ->> 'organizationName')::text AND "role" != 'superadmin')
 );
 
 DROP POLICY IF EXISTS "Delete org profiles" ON public.user_profiles;
-CREATE POLICY "Delete org profiles" ON public.user_profiles FOR DELETE
+CREATE POLICY "Delete profiles by tier" ON public.user_profiles FOR DELETE
 USING (
-  (auth.jwt() ->> 'isAdmin')::boolean = true AND
-  "organizationName" = (auth.jwt() ->> 'organizationName')::text
+  ((auth.jwt() ->> 'isAdmin')::boolean = true AND "organizationName" = (auth.jwt() ->> 'organizationName')::text)
 );
 
 -- Projects RLS Policies

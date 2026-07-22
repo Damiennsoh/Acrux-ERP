@@ -7,7 +7,7 @@ const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { staffId, password, name, organizationName, department } = body;
+    const { staffId, password, name, role = 'admin', organizationName, department } = body;
 
     // Validate password length (Supabase requires 8+ chars)
     if (!password || password.length < 8) {
@@ -51,8 +51,8 @@ export async function POST(request: NextRequest) {
       user_metadata: {
         staffId,
         name,
-        role: 'admin',
-        isAdmin: true,
+        role,
+        isAdmin: role === 'admin' || role === 'superadmin',
         organizationName: orgSlug,
         department: department || 'General'
       },
@@ -71,8 +71,8 @@ export async function POST(request: NextRequest) {
           id: existingUser.id,
           staffId,
           name,
-          role: 'admin',
-          isAdmin: true,
+          role,
+          isAdmin: role === 'admin' || role === 'superadmin',
           organizationName: orgSlug,
           department: department || 'General'
         }, { onConflict: 'id' });
@@ -94,8 +94,8 @@ export async function POST(request: NextRequest) {
       id: data.user.id,
       staffId,
       name,
-      role: 'admin',
-      isAdmin: true,
+      role,
+      isAdmin: role === 'admin' || role === 'superadmin',
       organizationName: orgSlug,
       department: department || 'General',
       defaultCurrency: 'USD'
@@ -113,8 +113,8 @@ export async function POST(request: NextRequest) {
         email,
         staffId,
         name,
-        role: 'admin',
-        isAdmin: true
+        role,
+        isAdmin: role === 'admin' || role === 'superadmin'
       }
     });
 

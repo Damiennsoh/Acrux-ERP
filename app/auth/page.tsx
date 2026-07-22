@@ -105,7 +105,7 @@ export default function AuthPage() {
         return;
       }
 
-      // 2. Create admin via API (bypasses rate limits)
+      // 2. Create superadmin via API (bypasses rate limits)
       const response = await fetch('/api/create-admin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -113,6 +113,7 @@ export default function AuthPage() {
           staffId: 'ACRUX-ADMIN-01',
           password: 'Admin@1234', // 8+ chars required by Supabase
           name: 'System Administrator',
+          role: 'superadmin',
           organizationName: 'ACRUX IT SOLUTIONS',
           department: 'Management'
         })

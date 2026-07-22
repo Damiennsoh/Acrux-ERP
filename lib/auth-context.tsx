@@ -161,8 +161,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { success: false, error: 'User with this Staff ID already exists in your organization.' };
       }
 
-      // 2. For Admins, ALWAYS use the API route (bypasses client-side rate limits)
-      if (role === 'admin') {
+      // PRIVILEGE CHECK: Only Superadmins can create other Superadmins
+      if (role === 'superadmin' && user?.role !== 'superadmin') {
+        return { 
+          success: false, 
+          error: 'Only Superadmins can create Superadmin accounts.' 
+        };
+      }
+
+      // 2. For Admins and Superadmins, ALWAYS use the API route (bypasses client-side rate limits)
+      if (role === 'admin' || role === 'superadmin') {
         try {
           const response = await fetch('/api/create-admin', {
             method: 'POST',
@@ -171,6 +179,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               staffId, 
               password, 
               name, 
+              role,
               organizationName: org, 
               department: dept 
             })
@@ -233,7 +242,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           staffId,
           name,
           role,
-          isAdmin: role === 'admin',
+          isAdmin: role === 'admin' || role === 'superadmin',
           organizationName: orgSlug,
           department: dept,
         });
@@ -280,21 +289,69 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }));
   };
 
-  const updateUserRole = async (userId: string, role: string) => {
+  const updateUserRole = async (userId: string, newRole: string) => {
+    // 1. SAFETY CHECK: Prevent revoking the LAST admin/superadmin
+    const currentUsers = await getUsers();
+    const targetUser = currentUsers.find(u => u.id === userId);
+    const adminCount = currentUsers.filter(u => u.isAdmin).length;
+    
+    if (targetUser?.isAdmin && adminCount <= 1) {
+      return { 
+        success: false, 
+        error: 'Cannot revoke the last administrator. Create a new admin first.' 
+      };
+    }
+
+    // 2. PRIVILEGE CHECK: Only Superadmins can modify Superadmin accounts
+    if (targetUser?.role === 'superadmin' && user?.role !== 'superadmin') {
+      return { 
+        success: false, 
+        error: 'Only Superadmins can modify Superadmin accounts.' 
+      };
+    }
+
+    // 3. PRIVILEGE CHECK: Regular admins cannot promote others to superadmin
+    if (newRole === 'superadmin' && user?.role !== 'superadmin') {
+      return { 
+        success: false, 
+        error: 'Only Superadmins can create Superadmin accounts.' 
+      };
+    }
+
     const { error } = await supabase
       .from('user_profiles')
-      .update({ role, isAdmin: role === 'admin' })
+      .update({ role: newRole, isAdmin: newRole !== 'user' })
       .eq('id', userId);
 
     if (error) return { success: false, error: error.message };
 
     // Log audit
-    await logAudit('UPDATE', 'user_profiles', userId, { role, isAdmin: role === 'admin' });
+    await logAudit('UPDATE', 'user_profiles', userId, { role: newRole, isAdmin: newRole !== 'user' });
 
     return { success: true };
   };
 
   const deleteUser = async (userId: string) => {
+    // 1. SAFETY CHECK: Prevent deleting the LAST admin/superadmin
+    const currentUsers = await getUsers();
+    const targetUser = currentUsers.find(u => u.id === userId);
+    const adminCount = currentUsers.filter(u => u.isAdmin).length;
+    
+    if (targetUser?.isAdmin && adminCount <= 1) {
+      return { 
+        success: false, 
+        error: 'Cannot delete the last administrator. Create a new admin first.' 
+      };
+    }
+
+    // 2. PRIVILEGE CHECK: Only Superadmins can delete Superadmin accounts
+    if (targetUser?.role === 'superadmin' && user?.role !== 'superadmin') {
+      return { 
+        success: false, 
+        error: 'Only Superadmins can delete Superadmin accounts.' 
+      };
+    }
+
     // Delete profile first (RLS allows this)
     const { error: profileError } = await supabase
       .from('user_profiles')

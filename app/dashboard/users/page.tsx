@@ -67,8 +67,7 @@ export default function UserManagementPage() {
       const currentOrgSlug = currentUser?.organizationName ? slugifyOrg(currentUser.organizationName) : '';
       const filteredByOrg = allUsers.filter(u => 
         u.organizationName === currentUser?.organizationName || 
-        u.organizationName === currentOrgSlug ||
-        u.orgId === currentOrgSlug
+        u.organizationName === currentOrgSlug
       );
       console.log("[UserManagement] Filtered to", filteredByOrg.length, "users for current organization");
       
@@ -101,6 +100,19 @@ export default function UserManagementPage() {
   }, [users, searchQuery]);
 
   const handleToggleRole = async (targetUser: any) => {
+    // SAFETY GUARD: Prevent revoking the LAST admin
+    const adminCount = users.filter(u => u.isAdmin).length;
+    if (targetUser.isAdmin && adminCount <= 1) {
+      toast.error('Cannot revoke the last administrator. Create a new admin first.');
+      return;
+    }
+
+    // PRIVILEGE GUARD: Only Superadmins can modify Superadmins
+    if (targetUser.role === 'superadmin' && currentUser?.role !== 'superadmin') {
+      toast.error('Only Superadmins can modify Superadmin accounts.');
+      return;
+    }
+
     const newRole = targetUser.role === 'admin' ? 'user' : 'admin';
     const actionName = newRole === 'admin' ? 'promote' : 'revoke';
     
@@ -121,6 +133,19 @@ export default function UserManagementPage() {
   };
 
   const handleDelete = async (targetUser: any) => {
+    // SAFETY GUARD: Prevent deleting the LAST admin
+    const adminCount = users.filter(u => u.isAdmin).length;
+    if (targetUser.isAdmin && adminCount <= 1) {
+      toast.error('Cannot delete the last administrator. Create a new admin first.');
+      return;
+    }
+
+    // PRIVILEGE GUARD: Only Superadmins can delete Superadmins
+    if (targetUser.role === 'superadmin' && currentUser?.role !== 'superadmin') {
+      toast.error('Only Superadmins can delete Superadmin accounts.');
+      return;
+    }
+
     if (!confirm(`CAUTION: Are you sure you want to delete ${targetUser.name}'s account? This action cannot be undone.`)) {
       return;
     }
@@ -370,7 +395,13 @@ export default function UserManagementPage() {
                       </div>
                     </td>
                     <td className="px-3 sm:px-6 py-3 sm:py-5">
-                      {(u.role === 'admin' || u.isAdmin) ? (
+                      {u.role === 'superadmin' ? (
+                        <Badge className="bg-gradient-to-r from-yellow-500 to-amber-600 text-white border-0 font-bold px-2 sm:px-4 py-1 sm:py-2 shadow-lg shadow-yellow-500/20 text-xs sm:text-sm">
+                          <span className="mr-1 sm:mr-2">👑</span>
+                          <span className="sm:hidden">Superadmin</span>
+                          <span className="hidden sm:inline">Superadmin</span>
+                        </Badge>
+                      ) : (u.role === 'admin' || u.isAdmin) ? (
                         <Badge className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white border-0 font-bold px-2 sm:px-4 py-1 sm:py-2 shadow-lg shadow-blue-500/20 text-xs sm:text-sm">
                           <ShieldAlert className="w-2 h-2 sm:w-3 sm:h-3 mr-1 sm:mr-2 hidden sm:inline" />
                           <span className="sm:hidden">Admin</span>
@@ -399,7 +430,10 @@ export default function UserManagementPage() {
                             variant="outline"
                             size="sm"
                             onClick={() => handleToggleRole(u)}
-                            disabled={!!actionLoading}
+                            disabled={!!actionLoading || 
+                              (u.role === 'superadmin' && currentUser?.role !== 'superadmin') ||
+                              (u.isAdmin && users.filter(x => x.isAdmin).length <= 1)
+                            }
                             className="bg-slate-800/60 border-slate-600 text-slate-200 hover:bg-slate-700 hover:text-white font-semibold transition-all duration-200 text-xs px-2 sm:px-3 h-8"
                           >
                             {(u.role === 'admin' || u.isAdmin) ? <span className="hidden sm:inline">Revoke Admin</span> : <span className="hidden sm:inline">Make Admin</span>}
@@ -408,6 +442,10 @@ export default function UserManagementPage() {
                             variant="destructive"
                             size="icon"
                             onClick={() => handleDelete(u)}
+                            disabled={!!actionLoading || 
+                              (u.role === 'superadmin' && currentUser?.role !== 'superadmin') ||
+                              (u.isAdmin && users.filter(x => x.isAdmin).length <= 1)
+                            }
                             className="bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border-red-500/50 hover:border-red-500 transition-all duration-200 h-8 w-8"
                           >
                             <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
