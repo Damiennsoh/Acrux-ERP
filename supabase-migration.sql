@@ -30,6 +30,21 @@ CREATE TABLE IF NOT EXISTS public.user_profiles (
 );
 
 -- Add constraint to enforce slugified organization names (lowercase, numbers, hyphens only)
+-- First, update any existing data to be slugified
+DO $$
+BEGIN
+  -- Convert to lowercase and remove special characters except spaces
+  UPDATE public.user_profiles 
+  SET "organizationName" = LOWER(REGEXP_REPLACE("organizationName", '[^a-zA-Z0-9\s]', '', 'g'))
+  WHERE "organizationName" ~ '[A-Z]';
+
+  -- Replace spaces with hyphens
+  UPDATE public.user_profiles 
+  SET "organizationName" = REGEXP_REPLACE("organizationName", '\s+', '-', 'g')
+  WHERE "organizationName" ~ '\s';
+END $$;
+
+-- Now add the constraint
 ALTER TABLE public.user_profiles 
   DROP CONSTRAINT IF EXISTS user_profiles_org_format_check;
 
@@ -146,7 +161,7 @@ DECLARE
   admin_count int;
 BEGIN
   -- Only check when deleting an admin or superadmin
-  IF OLD."isAdmin" = true THEN
+  IF TG_OP = 'DELETE' AND OLD."isAdmin" = true THEN
     SELECT COUNT(*) INTO admin_count 
     FROM public.user_profiles 
     WHERE "organizationName" = OLD."organizationName" 
