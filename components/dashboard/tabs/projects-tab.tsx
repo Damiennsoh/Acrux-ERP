@@ -64,7 +64,7 @@ export function ProjectsTab() {
     name: '',
     clientName: '',
     location: '',
-    projectType: 'New',
+    projectType: 'Website',
     startDate: toISODate(null),
     endDate: toISODate(null),
     status: 'Active',
@@ -87,7 +87,7 @@ export function ProjectsTab() {
         documentUrl: project.documentUrl || '',
         budget: project.budget?.toString() || '',
       });
-      const defaultTypes = ['New', 'Maintainance'];
+      const defaultTypes = ['Website', 'Mobile App', 'Desktop App', 'API / Backend', 'SaaS Product', 'UI/UX Design'];
       const isCustom = project.projectType && !defaultTypes.includes(project.projectType);
       if (isCustom) {
         setFormData(prev => ({ ...prev, projectType: 'Add +' }));
@@ -104,7 +104,7 @@ export function ProjectsTab() {
         name: '',
         clientName: '',
         location: '',
-        projectType: 'New',
+        projectType: 'Website',
         startDate: toISODate(null),
         endDate: toISODate(null),
         status: 'Active',
@@ -276,11 +276,11 @@ export function ProjectsTab() {
                     />
                   </div>
                   <div>
-                    <label className="text-sm font-medium">Location</label>
+                    <label className="text-sm font-medium">Client Location</label>
                     <Input
                       value={formData.location}
                       onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                      placeholder="City, State"
+                      placeholder="City / Remote"
                     />
                   </div>
                 </div>
@@ -302,8 +302,12 @@ export function ProjectsTab() {
                         <SelectValue placeholder="Select type" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="New">New Installation</SelectItem>
-                        <SelectItem value="Maintainance">Maintenance</SelectItem>
+                        <SelectItem value="Website">Website</SelectItem>
+                        <SelectItem value="Mobile App">Mobile App</SelectItem>
+                        <SelectItem value="Desktop App">Desktop App</SelectItem>
+                        <SelectItem value="API / Backend">API / Backend</SelectItem>
+                        <SelectItem value="SaaS Product">SaaS Product</SelectItem>
+                        <SelectItem value="UI/UX Design">UI/UX Design</SelectItem>
                         <SelectItem value="Custom">Custom...</SelectItem>
                       </SelectContent>
                     </Select>
@@ -312,7 +316,7 @@ export function ProjectsTab() {
                         className="mt-2"
                         value={customType}
                         onChange={(e) => setCustomType(e.target.value)}
-                        placeholder="Enter custom type"
+                        placeholder="e.g. Data Analytics, AI Integration"
                       />
                     )}
                   </div>
@@ -323,7 +327,7 @@ export function ProjectsTab() {
                       step="0.01"
                       value={formData.budget}
                       onChange={(e) => setFormData({ ...formData, budget: e.target.value })}
-                      placeholder="Total Contract Price"
+                      placeholder="Contract Value"
                     />
                   </div>
                 </div>
@@ -395,8 +399,12 @@ export function ProjectsTab() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Types</SelectItem>
-            <SelectItem value="New">New</SelectItem>
-            <SelectItem value="Maintainance">Maintainance</SelectItem>
+            <SelectItem value="Website">Website</SelectItem>
+            <SelectItem value="Mobile App">Mobile App</SelectItem>
+            <SelectItem value="Desktop App">Desktop App</SelectItem>
+            <SelectItem value="API / Backend">API / Backend</SelectItem>
+            <SelectItem value="SaaS Product">SaaS Product</SelectItem>
+            <SelectItem value="UI/UX Design">UI/UX Design</SelectItem>
           </SelectContent>
         </Select>
         <Select value={filterStatus} onValueChange={setFilterStatus}>

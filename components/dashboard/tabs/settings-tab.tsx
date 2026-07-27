@@ -746,12 +746,14 @@ export function SettingsTab() {
                 <h4 className="font-semibold mb-2 text-sm">Account Status</h4>
                 <div className="space-y-2">
                   <p className="text-sm">
-                    <span className="text-muted-foreground">Email verified:</span>{' '}
-                    <span className="text-emerald-600 font-semibold">Yes</span>
+                    <span className="text-muted-foreground">Role:</span>{' '}
+                    <span className="font-semibold capitalize text-blue-600 dark:text-blue-400">
+                      {user?.role === 'superadmin' ? '👑 Superadmin' : user?.isAdmin ? '🛡️ Admin' : '👤 Staff'}
+                    </span>
                   </p>
                   <p className="text-sm">
-                    <span className="text-muted-foreground">Admin status:</span>{' '}
-                    <span className="text-emerald-600 font-semibold">Admin</span>
+                    <span className="text-muted-foreground">Organization:</span>{' '}
+                    <span className="font-semibold">{user?.organizationName || '—'}</span>
                   </p>
                 </div>
               </div>
@@ -787,18 +789,20 @@ export function SettingsTab() {
                 Enable Two-Factor Authentication
               </Button>
 
-              <div className="pt-4 border-t border-border">
-                <Button 
-                  onClick={() => setShowResetConfirm(true)} 
-                  variant="outline" 
-                  className="w-full text-destructive hover:text-destructive border-destructive"
-                >
-                  Reset System Authentication
-                </Button>
-                <p className="text-xs text-muted-foreground mt-2 text-center">
-                  This will delete all users and reset the system. Use with caution.
-                </p>
-              </div>
+              {user?.role === 'superadmin' && (
+                <div className="pt-4 border-t border-border">
+                  <Button 
+                    onClick={() => setShowResetConfirm(true)} 
+                    variant="outline" 
+                    className="w-full text-destructive hover:text-destructive border-destructive"
+                  >
+                    Reset System Authentication
+                  </Button>
+                  <p className="text-xs text-muted-foreground mt-2 text-center">
+                    This will delete all users and reset the system. Use with caution.
+                  </p>
+                </div>
+              )}
 
               <div className="pt-4 border-t border-border">
                 <p className="text-xs text-muted-foreground mb-4">
