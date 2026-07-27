@@ -135,16 +135,12 @@ function DashboardContent() {
             <SummaryTab />
           </TabsContent>
 
-          {isAdmin && (
-            <>
-              <TabsContent value="audit" className="space-y-4 m-0 border-none p-0 outline-none">
-                <AuditLogTab />
-              </TabsContent>
-              <TabsContent value="settings" className="space-y-4 m-0 border-none p-0 outline-none">
-                <SettingsTab />
-              </TabsContent>
-            </>
-          )}
+          <TabsContent value="audit" className="space-y-4 m-0 border-none p-0 outline-none">
+            <AuditLogTab />
+          </TabsContent>
+          <TabsContent value="settings" className="space-y-4 m-0 border-none p-0 outline-none">
+            <SettingsTab />
+          </TabsContent>
         </Tabs>
       </div>
 

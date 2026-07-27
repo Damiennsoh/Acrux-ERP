@@ -1,9 +1,8 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
-import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -46,16 +45,20 @@ export default function AuthPage() {
     const checkSetup = async () => {
       if (!navigator.onLine) return;
       
-      // Check if ANY admin exists in Supabase
-      const { data } = await supabase
-        .from('user_profiles')
-        .select('id')
-        .eq('isAdmin', true)
-        .limit(1);
-        
-      const hasAdmin = !!data?.length;
-      setShowSetupGuide(!hasAdmin);
-      setAdminExists(hasAdmin);
+      try {
+        // Use the server-side API route (service role key) to bypass RLS.
+        // A direct Supabase query here would fail because the user is not
+        // yet authenticated and the anon RLS SELECT policy blocks it.
+        const res = await fetch('/api/check-admin');
+        if (res.ok) {
+          const { hasAdmin } = await res.json();
+          setAdminExists(hasAdmin);
+          setShowSetupGuide(!hasAdmin);
+        }
+      } catch {
+        // Network error: default to showing login only (hide setup button)
+        setShowSetupGuide(false);
+      }
     };
     
     if (!isLoading) checkSetup();

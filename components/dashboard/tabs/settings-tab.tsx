@@ -23,10 +23,11 @@ import { toast } from 'sonner';
 import { Settings, Download, Upload, BarChart3, Lock, Moon, Sun, Database, UserPlus, UserMinus, Shield, Cloud, RefreshCw, CloudOff } from 'lucide-react';
 
 export function SettingsTab() {
-  const { user, getUsers, deleteUser, register, updateUserRole, changePassword, removeInitialAdmin, isCloudSyncing, cloudSyncError, triggerSync, isOnline } = useAuth();
+  const { user, getUsers, deleteUser, register, updateUserRole, changePassword, updateUserProfile, removeInitialAdmin, isCloudSyncing, cloudSyncError, triggerSync, isOnline } = useAuth();
   const { currency, setCurrency } = useCurrency();
   const isAdmin = user?.isAdmin;
   const { theme, setTheme } = useTheme();
+  const [displayName, setDisplayName] = useState(user?.name || '');
   const [notifications, setNotifications] = useState(true);
   const [emailAlerts, setEmailAlerts] = useState(true);
   const [dateFormat, setDateFormat] = useState('MM/DD/YYYY');
@@ -38,6 +39,12 @@ export function SettingsTab() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [pendingSyncCount, setPendingSyncCount] = useState(0);
   const [syncHealth, setSyncHealth] = useState<'healthy' | 'warning' | 'error'>('healthy');
+
+  useEffect(() => {
+    if (user?.name) {
+      setDisplayName(user.name);
+    }
+  }, [user?.name]);
 
   // Load saved settings on mount
   useEffect(() => {
@@ -102,13 +109,27 @@ export function SettingsTab() {
     setTheme(newTheme);
   };
 
-  const handleSaveSettings = () => {
-    // Save all settings to localStorage
-    localStorage.setItem('notifications', notifications.toString());
-    localStorage.setItem('emailAlerts', emailAlerts.toString());
-    localStorage.setItem('dateFormat', dateFormat);
-    
-    toast.success('Settings saved successfully');
+  const handleSaveSettings = async () => {
+    try {
+      if (displayName.trim() && displayName.trim() !== user?.name) {
+        if (user?.id) {
+          const result = await updateUserProfile(user.id, { name: displayName.trim() });
+          if (!result.success) {
+            toast.error(result.error || 'Failed to update display name');
+            return;
+          }
+        }
+      }
+
+      // Save all settings to localStorage
+      localStorage.setItem('notifications', notifications.toString());
+      localStorage.setItem('emailAlerts', emailAlerts.toString());
+      localStorage.setItem('dateFormat', dateFormat);
+      
+      toast.success('Settings saved successfully');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to save settings');
+    }
   };
 
   const handleExportData = async () => {
@@ -279,32 +300,28 @@ export function SettingsTab() {
   };
 
 
-  if (!isAdmin) {
-    return (
-      <Card>
-        <CardContent className="py-10 text-center">
-          <p className="text-muted-foreground">Admin settings are not available for your account</p>
-        </CardContent>
-      </Card>
-    );
-  }
+
 
   return (
     <div className="space-y-6">
       <Tabs defaultValue="general" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className={`grid w-full ${isAdmin ? 'grid-cols-4' : 'grid-cols-2'}`}>
           <TabsTrigger value="general" className="flex items-center gap-2">
             <Settings className="w-4 h-4" />
             <span className="hidden sm:inline">General</span>
           </TabsTrigger>
-          <TabsTrigger value="users" className="flex items-center gap-2">
-            <Shield className="w-4 h-4" />
-            <span className="hidden sm:inline">Users</span>
-          </TabsTrigger>
-          <TabsTrigger value="data" className="flex items-center gap-2">
-            <Database className="w-4 h-4" />
-            <span className="hidden sm:inline">Data</span>
-          </TabsTrigger>
+          {isAdmin && (
+            <TabsTrigger value="users" className="flex items-center gap-2">
+              <Shield className="w-4 h-4" />
+              <span className="hidden sm:inline">Users</span>
+            </TabsTrigger>
+          )}
+          {isAdmin && (
+            <TabsTrigger value="data" className="flex items-center gap-2">
+              <Database className="w-4 h-4" />
+              <span className="hidden sm:inline">Data</span>
+            </TabsTrigger>
+          )}
           <TabsTrigger value="security" className="flex items-center gap-2">
             <Lock className="w-4 h-4" />
             <span className="hidden sm:inline">Security</span>
@@ -325,7 +342,7 @@ export function SettingsTab() {
               </div>
               <div className="space-y-1">
                 <Label htmlFor="displayName">Display Name</Label>
-                <Input id="displayName" value={user?.name || ''} disabled className="bg-muted" />
+                <Input id="displayName" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
               </div>
 
               <div className="space-y-2">

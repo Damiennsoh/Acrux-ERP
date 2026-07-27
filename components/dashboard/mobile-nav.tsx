@@ -188,14 +188,10 @@ export function MobileNav({ user }: MobileNavProps) {
               <NavItem tab="revenue" icon={<TrendingUp className="w-4 h-4" />} label="Revenue" />
               <NavItem tab="summary" icon={<LineChart className="w-4 h-4" />} label="Summary" />
 
-              {isAdmin && (
-                <>
-                  <div style={{ padding: '0.75rem 0.5rem 0.3rem', fontFamily: FONT, fontSize: '0.6rem', fontWeight: 700, color: WHITE_55, textTransform: 'uppercase', letterSpacing: '0.12em' }}>Administration</div>
-                  <NavItem tab="users" icon={<Users className="w-4 h-4" />} label="User Management" />
-                  <NavItem tab="audit" icon={<AuditHistory className="w-4 h-4" />} label="Audit Logs" />
-                  <NavItem tab="settings" icon={<Settings className="w-4 h-4" />} label="Settings" />
-                </>
-              )}
+              <div style={{ padding: '0.75rem 0.5rem 0.3rem', fontFamily: FONT, fontSize: '0.6rem', fontWeight: 700, color: WHITE_55, textTransform: 'uppercase', letterSpacing: '0.12em' }}>Administration</div>
+              <NavItem tab="users" icon={<Users className="w-4 h-4" />} label="User Management" />
+              <NavItem tab="audit" icon={<AuditHistory className="w-4 h-4" />} label="Audit Logs" />
+              <NavItem tab="settings" icon={<Settings className="w-4 h-4" />} label="Settings" />
             </div>
 
             <div style={{ borderTop: '1px solid rgba(255,255,255,0.12)', padding: '1rem', background: 'rgba(0,0,0,0.12)' }}>

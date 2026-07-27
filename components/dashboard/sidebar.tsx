@@ -272,14 +272,10 @@ export function Sidebar({ user }: SidebarProps) {
         <NavLink href="/dashboard?tab=revenue" icon={<TrendingUp className="w-4 h-4" />} label="Revenue" isActive={activeTab === 'revenue'} />
         <NavLink href="/dashboard?tab=summary" icon={<LineChart className="w-4 h-4" />} label="Summary" isActive={activeTab === 'summary'} />
 
-        {isAdmin && (
-          <>
-            <SectionLabel text="Administration" />
-            <NavLink href="/dashboard/users" icon={<Users className="w-4 h-4" />} label="User Management" isActive={false} />
-            <NavLink href="/dashboard?tab=audit" icon={<AuditHistory className="w-4 h-4" />} label="Audit Logs" isActive={activeTab === 'audit'} />
-            <NavLink href="/dashboard?tab=settings" icon={<Settings className="w-4 h-4" />} label="Settings" isActive={activeTab === 'settings'} />
-          </>
-        )}
+        <SectionLabel text="Administration" />
+        <NavLink href="/dashboard/users" icon={<Users className="w-4 h-4" />} label="User Management" isActive={false} />
+        <NavLink href="/dashboard?tab=audit" icon={<AuditHistory className="w-4 h-4" />} label="Audit Logs" isActive={activeTab === 'audit'} />
+        <NavLink href="/dashboard?tab=settings" icon={<Settings className="w-4 h-4" />} label="Settings" isActive={activeTab === 'settings'} />
       </nav>
 
       {/* Footer: Status + User + Logout */}

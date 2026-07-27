@@ -205,22 +205,7 @@ export default function UserManagementPage() {
     );
   }
 
-  if (!currentUser?.isAdmin) {
-    return (
-      <div className="p-8">
-        <Alert variant="destructive" className="border-red-500/50 bg-red-50 dark:bg-red-950/20 shadow-xl rounded-2xl">
-          <ShieldAlert className="h-6 w-6 text-red-600" />
-          <div className="ml-3">
-            <h3 style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: '1.25rem' }} className="text-red-900 dark:text-red-100">Access Denied</h3>
-            <AlertDescription className="mt-1 text-red-700 dark:text-red-300 font-medium">
-              You do not have administrative privileges to manage organization users. 
-              Please contact your system administrator if you believe this is an error.
-            </AlertDescription>
-          </div>
-        </Alert>
-      </div>
-    );
-  }
+
 
   return (
     <div className="p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6 min-h-screen bg-slate-900">
@@ -421,7 +406,7 @@ export default function UserManagementPage() {
                             variant="outline"
                             size="sm"
                             onClick={() => handleEdit(u)}
-                            disabled={!!actionLoading}
+                            disabled={!!actionLoading || (!currentUser?.isAdmin && (u.isAdmin || u.role === 'admin' || u.role === 'superadmin'))}
                             className="bg-slate-800/60 border-slate-600 text-slate-200 hover:bg-slate-700 hover:text-white font-semibold transition-all duration-200 text-xs px-2 sm:px-3 h-8"
                           >
                             <Edit className="w-3 h-3 sm:w-4 sm:h-4" />
@@ -431,6 +416,7 @@ export default function UserManagementPage() {
                             size="sm"
                             onClick={() => handleToggleRole(u)}
                             disabled={!!actionLoading || 
+                              !currentUser?.isAdmin ||
                               (u.role === 'superadmin' && currentUser?.role !== 'superadmin') ||
                               (u.isAdmin && users.filter(x => x.isAdmin).length <= 1)
                             }
@@ -444,7 +430,8 @@ export default function UserManagementPage() {
                             onClick={() => handleDelete(u)}
                             disabled={!!actionLoading || 
                               (u.role === 'superadmin' && currentUser?.role !== 'superadmin') ||
-                              (u.isAdmin && users.filter(x => x.isAdmin).length <= 1)
+                              (u.isAdmin && users.filter(x => x.isAdmin).length <= 1) ||
+                              (!currentUser?.isAdmin && (u.isAdmin || u.role === 'admin' || u.role === 'superadmin'))
                             }
                             className="bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border-red-500/50 hover:border-red-500 transition-all duration-200 h-8 w-8"
                           >

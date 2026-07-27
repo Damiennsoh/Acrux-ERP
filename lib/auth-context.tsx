@@ -45,11 +45,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
     init();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (session?.user) {
-        await loadUserProfile(session.user.id, session.user.user_metadata);
-      } else {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // Only update the user state for session-bearing events.
+      // Ignore USER_UPDATED — it can fire during admin.createUser() operations
+      // in some Supabase versions and must not displace the current session.
+      if (event === 'SIGNED_OUT') {
         setUser(null);
+        return;
+      }
+      if (session?.user && (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
+        await loadUserProfile(session.user.id, session.user.user_metadata);
       }
     });
 
@@ -74,7 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const loadUserProfile = async (userId: string, metadata: any) => {
-    // Fetch from Supabase directly - no more IndexedDB!
+    // Fetch from Supabase directly
     const { data: profile } = await supabase
       .from('user_profiles')
       .select('*')
@@ -90,6 +95,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAdmin: profile.isAdmin ?? metadata.isAdmin,
         organizationName: profile.organizationName || metadata.organizationName,
         department: profile.department || metadata.department,
+      });
+      return;
+    }
+
+    // ---- SELF-HEALING: No profile row found ----
+    // This happens for users created before the DB trigger was installed.
+    // Build the profile from Supabase Auth metadata and upsert it.
+    if (metadata?.staffId || metadata?.name) {
+      const orgSlug = metadata.organizationName
+        ? metadata.organizationName.toLowerCase().replace(/\s+/g, '-')
+        : 'acrux-it-solutions';
+
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      const email = authUser?.email || '';
+
+      await supabase.from('user_profiles').upsert({
+        id: userId,
+        email,
+        staffId: metadata.staffId || '',
+        name: metadata.name || email.split('@')[0],
+        role: metadata.role || 'user',
+        isAdmin: metadata.isAdmin === true || metadata.role === 'superadmin' || metadata.role === 'admin',
+        organizationName: orgSlug,
+        department: metadata.department || 'General',
+        defaultCurrency: 'USD',
+      }, { onConflict: 'id' });
+
+      setUser({
+        id: userId,
+        staffId: metadata.staffId || '',
+        name: metadata.name || email.split('@')[0],
+        role: metadata.role || 'user',
+        isAdmin: metadata.isAdmin === true || metadata.role === 'superadmin' || metadata.role === 'admin',
+        organizationName: orgSlug,
+        department: metadata.department || 'General',
       });
     }
   };
@@ -146,10 +186,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = async (name: string, staffId: string, password: string, role: string, org: string, dept: string) => {
     try {
-      const email = getDummyEmail(staffId);
       const orgSlug = slugifyOrg(org);
 
-      // 1. Check if user already exists in Supabase first (prevent duplicate API calls)
+      // 1. Check if user already exists (prevent duplicate API calls)
       const { data: existingUser } = await supabase
         .from('user_profiles')
         .select('id')
@@ -169,97 +208,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
       }
 
-      // 2. For Admins and Superadmins, ALWAYS use the API route (bypasses client-side rate limits)
-      if (role === 'admin' || role === 'superadmin') {
-        try {
-          const response = await fetch('/api/create-admin', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              staffId, 
-              password, 
-              name, 
-              role,
-              organizationName: orgSlug, 
-              department: dept 
-            })
-          });
-          
-          const data = await response.json();
-          if (!response.ok || !data.success) {
-            // Handle specific rate limit error from API
-            if (response.status === 429) {
-              return { success: false, error: 'System busy. Please wait 30 seconds and try again.' };
-            }
-            return { success: false, error: data.error || 'Failed to create admin' };
-          }
-
-          // Log audit
-          await logAudit('CREATE', 'user_profiles', data.user.id, { name, staffId, role, department: dept });
-
-          return { success: true };
-          
-        } catch (err: any) {
-          return { success: false, error: 'Network error during admin creation' };
-        }
-      }
-
-      // 3. For Regular Users, add retry logic for rate limits
-      let attempts = 0;
-      while (attempts < 3) {
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: {
-              staffId,
-              name,
-              role,
-              isAdmin: role === 'admin',
-              organizationName: orgSlug,
-              department: dept,
-            }
-          }
+      // ALL roles (user, admin, superadmin) go through the server-side API.
+      //
+      // CRITICAL: supabase.auth.signUp() on the client side auto-signs-in the
+      // newly created user, which fires onAuthStateChange and replaces the
+      // currently logged-in admin's session with the new user's session —
+      // causing the dashboard to go blank and spin until a hard refresh.
+      //
+      // auth.admin.createUser() (service role, server-side) does NOT create a
+      // client session, so the admin's session is never disturbed.
+      try {
+        const response = await fetch('/api/create-admin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            staffId, 
+            password, 
+            name, 
+            role,
+            organizationName: orgSlug, 
+            department: dept 
+          })
         });
-
-        if (error) {
-          if (error.status === 429) {
-            attempts++;
-            if (attempts < 3) {
-              await new Promise(r => setTimeout(r, 2000 * attempts)); // Exponential backoff
-              continue;
-            }
-            return { success: false, error: 'Too many attempts. Please wait 30 seconds and try again.' };
+        
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+          if (response.status === 429) {
+            return { success: false, error: 'System busy. Please wait 30 seconds and try again.' };
           }
-          return { success: false, error: error.message };
+          return { success: false, error: data.error || 'Failed to create user' };
         }
 
-        if (!data.user) return { success: false, error: 'Registration failed' };
-
-        // Create profile in Supabase immediately
-        const { error: profileError } = await supabase.from('user_profiles').insert({
-          id: data.user.id,
-          staffId,
-          name,
-          role,
-          isAdmin: role === 'admin' || role === 'superadmin',
-          organizationName: orgSlug,
-          department: dept,
-        });
-
-        if (profileError) {
-          // Clean up auth user if profile creation fails
-          await supabase.auth.admin.deleteUser(data.user.id);
-          return { success: false, error: profileError.message };
-        }
-
-        // Log audit
+        // Log audit against the currently signed-in admin (user state is untouched)
         await logAudit('CREATE', 'user_profiles', data.user.id, { name, staffId, role, department: dept });
 
         return { success: true };
+        
+      } catch (err: any) {
+        return { success: false, error: 'Network error during user creation' };
       }
 
-      return { success: false, error: 'Registration failed after multiple attempts.' };
     } catch (err: any) {
       return { success: false, error: err.message };
     }
@@ -398,7 +386,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      console.warn('Supabase signOut failed (offline?):', e);
+    }
     setUser(null);
   };
 

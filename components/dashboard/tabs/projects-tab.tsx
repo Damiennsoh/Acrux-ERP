@@ -234,20 +234,19 @@ export function ProjectsTab() {
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
         <h2 className="text-2xl font-bold text-foreground">Project Info</h2>
-        {isAdmin && (
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-              <Button onClick={() => handleOpen()} className="bg-blue-600 hover:bg-blue-700">
-                <Plus className="w-4 h-4 mr-2" />
-                New Project
-              </Button>
-            </DialogTrigger>
-            <DialogContent aria-describedby={undefined} className="max-h-[90vh] overflow-y-auto sm:max-w-[500px]">
-              <DialogHeader>
-                <DialogTitle>{editingId ? 'Edit Project' : 'New Project'}</DialogTitle>
-              </DialogHeader>
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger asChild>
+            <Button onClick={() => handleOpen()} className="bg-blue-600 hover:bg-blue-700">
+              <Plus className="w-4 h-4 mr-2" />
+              New Project
+            </Button>
+          </DialogTrigger>
+          <DialogContent aria-describedby={undefined} className="max-h-[90vh] overflow-y-auto sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle>{editingId ? 'Edit Project' : 'New Project'}</DialogTitle>
+            </DialogHeader>
 
-              <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-sm font-medium">Project ID</label>
@@ -378,7 +377,6 @@ export function ProjectsTab() {
               </form>
             </DialogContent>
           </Dialog>
-        )}
       </div>
 
       {/* Filters */}
@@ -438,7 +436,7 @@ export function ProjectsTab() {
                 <TableHead className="hidden lg:table-cell">Type</TableHead>
                 <TableHead className="text-right">Budget</TableHead>
                 <TableHead>Status</TableHead>
-                {isAdmin && <TableHead className="text-right">Actions</TableHead>}
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -460,21 +458,21 @@ export function ProjectsTab() {
                       {project.status}
                     </span>
                   </TableCell>
-                  {isAdmin && (
-                    <TableCell className="text-right space-x-1">
-                      {project.documentUrl && (
-                        <Button variant="ghost" size="icon" onClick={() => window.open(project.documentUrl, '_blank')} className="h-8 w-8 text-blue-600">
-                          <FileText className="w-4 h-4" />
-                        </Button>
-                      )}
-                      <Button variant="ghost" size="icon" onClick={() => handleOpen(project)} className="h-8 w-8">
-                        <Edit2 className="w-4 h-4" />
+                  <TableCell className="text-right space-x-1">
+                    {project.documentUrl && (
+                      <Button variant="ghost" size="icon" onClick={() => window.open(project.documentUrl, '_blank')} className="h-8 w-8 text-blue-600">
+                        <FileText className="w-4 h-4" />
                       </Button>
+                    )}
+                    <Button variant="ghost" size="icon" onClick={() => handleOpen(project)} className="h-8 w-8">
+                      <Edit2 className="w-4 h-4" />
+                    </Button>
+                    {isAdmin && (
                       <Button variant="ghost" size="icon" onClick={() => handleDelete(project)} className="h-8 w-8 text-destructive">
                         <Trash2 className="w-4 h-4" />
                       </Button>
-                    </TableCell>
-                  )}
+                    )}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

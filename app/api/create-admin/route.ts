@@ -66,15 +66,17 @@ export async function POST(request: NextRequest) {
       const existingUser = existingUsers?.users.find(u => u.email === email);
       
       if (existingUser) {
-        // Try to create profile if it doesn't exist
+        // Ensure profile exists (upsert in case it was missing)
         await supabase.from('user_profiles').upsert({
           id: existingUser.id,
+          email: existingUser.email,
           staffId,
           name,
           role,
           isAdmin: role === 'admin' || role === 'superadmin',
           organizationName: orgSlug,
-          department: department || 'General'
+          department: department || 'General',
+          defaultCurrency: 'USD'
         }, { onConflict: 'id' });
         
         return NextResponse.json({ 
@@ -89,9 +91,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: error.message }, { status: 400 });
     }
 
-    // Create user profile
+    // Create user profile — email is required by the DB schema
     const { error: profileError } = await supabase.from('user_profiles').insert({
       id: data.user.id,
+      email,                                          // ← REQUIRED: NOT NULL in schema
       staffId,
       name,
       role,
@@ -103,7 +106,12 @@ export async function POST(request: NextRequest) {
 
     if (profileError) {
       console.error('Profile creation error:', profileError);
-      // Continue anyway - user is created
+      // Roll back: delete the orphaned auth user so we don't get ghosts
+      await supabase.auth.admin.deleteUser(data.user.id);
+      return NextResponse.json(
+        { success: false, error: `Profile creation failed: ${profileError.message}` },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({
