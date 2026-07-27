@@ -29,6 +29,7 @@ import {
   Wifi,
   WifiOff,
   History as AuditHistory,
+  Receipt,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -183,6 +184,7 @@ export function MobileNav({ user }: MobileNavProps) {
               <NavItem tab="development-costs" icon={<UsersRound className="w-4 h-4" />} label="Development Costs" />
               <NavItem tab="broker" icon={<Briefcase className="w-4 h-4" />} label="Broker Payments" />
               <NavItem tab="miscellaneous" icon={<Wallet className="w-4 h-4" />} label="Miscellaneous" />
+              <NavItem tab="expenses" icon={<Receipt className="w-4 h-4" />} label="Expenses" />
 
               <div style={{ padding: '0.75rem 0.5rem 0.3rem', fontFamily: FONT, fontSize: '0.6rem', fontWeight: 700, color: WHITE_55, textTransform: 'uppercase', letterSpacing: '0.12em' }}>Income & Reports</div>
               <NavItem tab="revenue" icon={<TrendingUp className="w-4 h-4" />} label="Revenue" />

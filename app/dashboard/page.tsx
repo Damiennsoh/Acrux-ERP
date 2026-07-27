@@ -126,6 +126,10 @@ function DashboardContent() {
             <MiscellaneousTab />
           </TabsContent>
 
+          <TabsContent value="expenses" className="space-y-4 m-0 border-none p-0 outline-none">
+            <ExpensesTab />
+          </TabsContent>
+
           <TabsContent value="revenue" className="space-y-4 m-0 border-none p-0 outline-none">
             <RevenueTab />
           </TabsContent>

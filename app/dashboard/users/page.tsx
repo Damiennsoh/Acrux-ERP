@@ -25,7 +25,8 @@ import {
   UserCog,
   ChevronRight,
   Edit,
-  X
+  X,
+  WifiOff
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -51,29 +52,44 @@ export default function UserManagementPage() {
   const { user: currentUser, getUsers, updateUserRole, deleteUser, updateUserProfile } = useAuth();
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isOffline, setIsOffline] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [editingUser, setEditingUser] = useState<any | null>(null);
   const [editForm, setEditForm] = useState({ name: '', staffId: '', department: '' });
 
   const fetchUsers = async () => {
+    // Fast-fail when offline to avoid infinite spin
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setIsOffline(true);
+      setLoading(false);
+      return;
+    }
+    setIsOffline(false);
     try {
       setLoading(true);
-      console.log("[UserManagement] Fetching users for org:", currentUser?.organizationName);
-      const allUsers = await getUsers();
-      console.log("[UserManagement] Raw users fetched:", allUsers);
-      
-      // Safety net: Explicitly filter by organization here as well
+      console.log('[UserManagement] Fetching users for org:', currentUser?.organizationName);
+
+      // 10-second timeout guard
+      const allUsers = await Promise.race([
+        getUsers(),
+        new Promise<any[]>((_, reject) =>
+          setTimeout(() => reject(new Error('Request timed out')), 10000)
+        ),
+      ]);
+
+      console.log('[UserManagement] Raw users fetched:', allUsers);
+
       const currentOrgSlug = currentUser?.organizationName ? slugifyOrg(currentUser.organizationName) : '';
-      const filteredByOrg = allUsers.filter(u => 
-        u.organizationName === currentUser?.organizationName || 
+      const filteredByOrg = allUsers.filter(u =>
+        u.organizationName === currentUser?.organizationName ||
         u.organizationName === currentOrgSlug
       );
-      console.log("[UserManagement] Filtered to", filteredByOrg.length, "users for current organization");
-      
+      console.log('[UserManagement] Filtered to', filteredByOrg.length, 'users for current organization');
+
       setUsers(filteredByOrg);
     } catch (error: any) {
-      console.error("[UserManagement] Fetch users error:", error);
+      console.error('[UserManagement] Fetch users error:', error);
       toast.error(error.message || 'Failed to fetch users');
     } finally {
       setLoading(false);
@@ -204,6 +220,27 @@ export default function UserManagementPage() {
       </div>
     );
   }
+
+  if (isOffline) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] space-y-4 text-center">
+        <div className="w-16 h-16 rounded-full bg-orange-100 flex items-center justify-center">
+          <WifiOff className="w-8 h-8 text-orange-500" />
+        </div>
+        <div>
+          <p className="font-semibold text-foreground text-lg">You are offline</p>
+          <p className="text-sm text-muted-foreground mt-1">User management data requires an internet connection.</p>
+        </div>
+        <button
+          onClick={fetchUsers}
+          className="px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
 
 
 

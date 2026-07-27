@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { supabase } from './supabase';
 import { slugifyOrg } from './utils/org';
+import { HybridSyncEngine } from './sync-service';
 
 export interface AuthUser {
   id: string;
@@ -24,6 +25,10 @@ interface AuthContextType {
   deleteUser: (userId: string) => Promise<{ success: boolean; error?: string }>;
   updateUserProfile: (userId: string, updates: Partial<AuthUser>) => Promise<{ success: boolean; error?: string }>;
   changePassword: (password: string) => Promise<{ success: boolean; error?: string }>;
+  isCloudSyncing: boolean;
+  cloudSyncError: string | null;
+  triggerSync: () => Promise<void>;
+  isOnline: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -33,6 +38,34 @@ const getDummyEmail = (staffId: string) => `${staffId.toLowerCase().replace(/[^a
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isCloudSyncing, setIsCloudSyncing] = useState(false);
+  const [cloudSyncError, setCloudSyncError] = useState<string | null>(null);
+  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+
+  const triggerSync = async () => {
+    if (!isOnline) return;
+    try {
+      setIsCloudSyncing(true);
+      setCloudSyncError(null);
+      const engine = HybridSyncEngine.getInstance();
+      await engine.pushLocalChanges();
+    } catch (err: any) {
+      setCloudSyncError(err.message || 'Sync failed');
+    } finally {
+      setIsCloudSyncing(false);
+    }
+  };
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   // Restore session on mount
   useEffect(() => {
@@ -397,7 +430,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider value={{
       user, isLoading, login, logout, register, getUsers,
-      updateUserRole, deleteUser, updateUserProfile, changePassword
+      updateUserRole, deleteUser, updateUserProfile, changePassword,
+      isCloudSyncing, cloudSyncError, triggerSync, isOnline
     }}>
       {children}
     </AuthContext.Provider>

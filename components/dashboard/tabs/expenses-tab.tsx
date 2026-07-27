@@ -35,10 +35,10 @@ export function ExpensesTab() {
 
   const [formData, setFormData] = useState({
     projectId: '',
-    category: 'materials',
+    category: 'software-licenses',
     description: '',
     amount: '',
-    currency: 'LRD',
+    currency: 'USD',
     vendor: '',
     date: new Date().toISOString().split('T')[0],
     status: 'pending',
@@ -65,10 +65,10 @@ export function ExpensesTab() {
       setEditingId(null);
       setFormData({
         projectId: '',
-        category: 'materials',
+        category: 'software-licenses',
         description: '',
         amount: '',
-        currency: 'LRD',
+        currency: 'USD',
         vendor: '',
         date: new Date().toISOString().split('T')[0],
         status: 'pending',
@@ -191,11 +191,14 @@ export function ExpensesTab() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="materials">Materials</SelectItem>
-                      <SelectItem value="labor">Labor</SelectItem>
-                      <SelectItem value="equipment">Equipment</SelectItem>
-                      <SelectItem value="other">Other</SelectItem>
-                    </SelectContent>
+                        <SelectItem value="software-licenses">Software Licenses</SelectItem>
+                        <SelectItem value="cloud-hosting">Cloud & Hosting</SelectItem>
+                        <SelectItem value="developer-tools">Developer Tools</SelectItem>
+                        <SelectItem value="contractor-fees">Contractor / Freelancer Fees</SelectItem>
+                        <SelectItem value="marketing">Marketing & Ads</SelectItem>
+                        <SelectItem value="office-admin">Office & Admin</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
                   </Select>
                 </div>
 
@@ -292,11 +295,14 @@ export function ExpensesTab() {
            <SelectTrigger className="w-full sm:w-[200px]">
              <SelectValue placeholder="All Categories" />
            </SelectTrigger>
-           <SelectContent>
+          <SelectContent>
              <SelectItem value="all">All Categories</SelectItem>
-             <SelectItem value="materials">Materials</SelectItem>
-             <SelectItem value="labor">Labor</SelectItem>
-             <SelectItem value="equipment">Equipment</SelectItem>
+             <SelectItem value="software-licenses">Software Licenses</SelectItem>
+             <SelectItem value="cloud-hosting">Cloud & Hosting</SelectItem>
+             <SelectItem value="developer-tools">Developer Tools</SelectItem>
+             <SelectItem value="contractor-fees">Contractor / Freelancer Fees</SelectItem>
+             <SelectItem value="marketing">Marketing & Ads</SelectItem>
+             <SelectItem value="office-admin">Office & Admin</SelectItem>
              <SelectItem value="other">Other</SelectItem>
            </SelectContent>
          </Select>

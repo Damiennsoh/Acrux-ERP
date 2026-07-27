@@ -9,11 +9,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Spinner } from '@/components/ui/spinner';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, History, AlertCircle } from 'lucide-react';
+import { Search, History, AlertCircle, WifiOff } from 'lucide-react';
 
 export function AuditLogTab() {
-  const { data: auditLogs, isLoading } = useSupabaseCollection('audit_logs');
-  const { data: userProfiles } = useSupabaseCollection('user_profiles');
+  const { data: auditLogs, isLoading, error, mutate } = useSupabaseCollection('audit_logs', { timeoutMs: 10000 });
+  const { data: userProfiles } = useSupabaseCollection('user_profiles', { timeoutMs: 10000 });
+  const isOffline = error?.message === 'Offline' || (typeof navigator !== 'undefined' && !navigator.onLine);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterAction, setFilterAction] = useState('all');
   const [filterEntity, setFilterEntity] = useState('all');
@@ -150,6 +151,24 @@ export function AuditLogTab() {
         <div className="flex justify-center py-20">
           <Spinner className="w-10 h-10" />
         </div>
+      ) : isOffline ? (
+        <Card className="border-dashed border-2 bg-muted/20">
+          <CardContent className="py-20 text-center flex flex-col items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-orange-100 flex items-center justify-center">
+              <WifiOff className="w-7 h-7 text-orange-500" />
+            </div>
+            <div>
+              <p className="font-semibold text-foreground">You are offline</p>
+              <p className="text-sm text-muted-foreground mt-1">Audit logs require an internet connection.</p>
+            </div>
+            <button
+              onClick={mutate}
+              className="px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+            >
+              Retry
+            </button>
+          </CardContent>
+        </Card>
       ) : filteredLogs.length === 0 ? (
         <Card className="border-dashed border-2 bg-muted/20">
           <CardContent className="py-20 text-center flex flex-col items-center gap-3">
