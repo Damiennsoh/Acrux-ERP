@@ -108,73 +108,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const loadUserProfile = async (userId: string, metadata: any) => {
-    // Fetch from Supabase directly with a timeout
-    let profile = null;
-    let timeoutId: NodeJS.Timeout;
+    // Build a fallback user object from JWT metadata immediately.
+    // This is always available from the session - no network needed.
+    const orgSlug = metadata?.organizationName
+      ? slugifyOrg(metadata.organizationName)
+      : 'acrux-it-solutions';
+
+    const fallbackUser = {
+      id: userId,
+      staffId: metadata?.staffId || '',
+      name: metadata?.name || 'User',
+      role: metadata?.role || 'user',
+      isAdmin: metadata?.isAdmin === true || metadata?.role === 'superadmin' || metadata?.role === 'admin',
+      organizationName: orgSlug,
+      department: metadata?.department || 'General',
+    };
+
+    // Immediately set the user from metadata so the app never hangs.
+    // We will upgrade it with DB data if the fetch succeeds.
+    setUser(fallbackUser);
+
+    // Try to fetch the full profile from Supabase (best effort with timeout).
     try {
       const fetchPromise = supabase
         .from('user_profiles')
         .select('*')
         .eq('id', userId)
         .single();
-      const timeoutPromise = new Promise<any>((_, reject) => {
-        timeoutId = setTimeout(() => reject(new Error('Profile fetch timeout')), 8000);
+
+      const timeoutPromise = new Promise<any>((resolve) => {
+        // Resolve (not reject) with null after 6s so we don't throw on timeout
+        setTimeout(() => resolve({ data: null }), 6000);
       });
-      
+
       const result = await Promise.race([fetchPromise, timeoutPromise]);
-      clearTimeout(timeoutId!);
-      profile = result?.data;
+      const profile = result?.data;
+
+      if (profile) {
+        // Upgrade the user object with the richer DB profile
+        setUser({
+          id: profile.id,
+          staffId: profile.staffId || fallbackUser.staffId,
+          name: profile.name || fallbackUser.name,
+          role: profile.role || fallbackUser.role,
+          isAdmin: profile.isAdmin ?? fallbackUser.isAdmin,
+          organizationName: profile.organizationName || fallbackUser.organizationName,
+          department: profile.department || fallbackUser.department,
+        });
+      }
     } catch (err) {
-      console.warn('Failed to fetch user profile:', err);
-    }
-
-    if (profile) {
-      setUser({
-        id: profile.id,
-        staffId: profile.staffId || metadata.staffId,
-        name: profile.name || metadata.name,
-        role: profile.role || metadata.role,
-        isAdmin: profile.isAdmin ?? metadata.isAdmin,
-        organizationName: profile.organizationName || metadata.organizationName,
-        department: profile.department || metadata.department,
-      });
-      return;
-    }
-
-    // ---- SELF-HEALING: No profile row found ----
-    // This happens for users created before the DB trigger was installed.
-    // Build the profile from Supabase Auth metadata and upsert it.
-    if (metadata?.staffId || metadata?.name) {
-      const orgSlug = metadata.organizationName
-        ? metadata.organizationName.toLowerCase().replace(/\s+/g, '-')
-        : 'acrux-it-solutions';
-
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      const email = authUser?.email || '';
-
-      await supabase.from('user_profiles').upsert({
-        id: userId,
-        email,
-        staffId: metadata.staffId || '',
-        name: metadata.name || email.split('@')[0],
-        role: metadata.role || 'user',
-        isAdmin: metadata.isAdmin === true || metadata.role === 'superadmin' || metadata.role === 'admin',
-        organizationName: orgSlug,
-        department: metadata.department || 'General',
-        defaultCurrency: 'USD',
-      }, { onConflict: 'id' });
-
-      setUser({
-        id: userId,
-        staffId: metadata.staffId || '',
-        name: metadata.name || email.split('@')[0],
-        role: metadata.role || 'user',
-        isAdmin: metadata.isAdmin === true || metadata.role === 'superadmin' || metadata.role === 'admin',
-        organizationName: orgSlug,
-        department: metadata.department || 'General',
-      });
+      // Silently ignore - the fallback user is already set above
+      console.warn('[Auth] Profile DB fetch failed, using JWT metadata:', err);
     }
   };
+
 
   const login = async (staffId: string, password: string, org: string) => {
     try {
