@@ -84,6 +84,22 @@ CREATE TABLE IF NOT EXISTS public.development_costs (
   updated_at timestamptz DEFAULT now()
 );
 
+-- Create development_tools table
+CREATE TABLE IF NOT EXISTS public.development_tools (
+  id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
+  projectId text,
+  toolName text NOT NULL,
+  quantity numeric DEFAULT 1,
+  unitCost numeric DEFAULT 0,
+  totalCost numeric DEFAULT 0,
+  receiptUrl text,
+  currency text DEFAULT 'USD',
+  "orgId" text NOT NULL,
+  isDeleted boolean DEFAULT false,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
 -- Create expenses table
 CREATE TABLE IF NOT EXISTS public.expenses (
   id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
@@ -187,6 +203,7 @@ ALTER TABLE public.organizations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.development_costs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.development_tools ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.expenses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.revenue ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.miscellaneous ENABLE ROW LEVEL SECURITY;
@@ -276,6 +293,24 @@ DROP POLICY IF EXISTS "Users can delete own org development_costs" ON public.dev
 CREATE POLICY "Users can delete own org development_costs" ON public.development_costs FOR DELETE
 USING ("orgId" = (auth.jwt() ->> 'organizationName')::text);
 
+-- Development Tools RLS Policies
+DROP POLICY IF EXISTS "Users can view own org development_tools" ON public.development_tools;
+CREATE POLICY "Users can view own org development_tools" ON public.development_tools FOR SELECT
+USING ("orgId" = (auth.jwt() ->> 'organizationName')::text AND isDeleted = false);
+
+DROP POLICY IF EXISTS "Users can insert own org development_tools" ON public.development_tools;
+CREATE POLICY "Users can insert own org development_tools" ON public.development_tools FOR INSERT
+WITH CHECK ("orgId" = (auth.jwt() ->> 'organizationName')::text);
+
+DROP POLICY IF EXISTS "Users can update own org development_tools" ON public.development_tools;
+CREATE POLICY "Users can update own org development_tools" ON public.development_tools FOR UPDATE
+USING ("orgId" = (auth.jwt() ->> 'organizationName')::text)
+WITH CHECK ("orgId" = (auth.jwt() ->> 'organizationName')::text);
+
+DROP POLICY IF EXISTS "Users can delete own org development_tools" ON public.development_tools;
+CREATE POLICY "Users can delete own org development_tools" ON public.development_tools FOR DELETE
+USING ("orgId" = (auth.jwt() ->> 'organizationName')::text);
+
 -- Expenses RLS Policies
 DROP POLICY IF EXISTS "Users can view own org expenses" ON public.expenses;
 CREATE POLICY "Users can view own org expenses" ON public.expenses FOR SELECT
@@ -363,6 +398,8 @@ CREATE INDEX IF NOT EXISTS idx_user_profiles_staffId ON public.user_profiles("st
 CREATE INDEX IF NOT EXISTS idx_projects_org ON public.projects("orgId");
 CREATE INDEX IF NOT EXISTS idx_projects_projectId ON public.projects("projectId");
 CREATE INDEX IF NOT EXISTS idx_development_costs_org ON public.development_costs("orgId");
+CREATE INDEX IF NOT EXISTS idx_development_tools_org ON public.development_tools("orgId");
+CREATE INDEX IF NOT EXISTS idx_development_tools_projectId ON public.development_tools("projectId");
 CREATE INDEX IF NOT EXISTS idx_expenses_org ON public.expenses("orgId");
 CREATE INDEX IF NOT EXISTS idx_revenue_org ON public.revenue("orgId");
 CREATE INDEX IF NOT EXISTS idx_miscellaneous_org ON public.miscellaneous("orgId");
@@ -376,5 +413,4 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON public.audit_logs("timest
 DROP TABLE IF EXISTS public.materials CASCADE;
 DROP TABLE IF EXISTS public.labor CASCADE;
 DROP TABLE IF EXISTS public.petty_cash CASCADE;
-DROP TABLE IF EXISTS public.development_tools CASCADE;
 

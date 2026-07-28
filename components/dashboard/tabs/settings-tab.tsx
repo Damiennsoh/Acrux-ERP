@@ -173,30 +173,18 @@ export function SettingsTab() {
       reader.onload = async (e) => {
         try {
           const data = JSON.parse(e.target?.result as string);
-          const db = await getDB();
-          const engine = HybridSyncEngine.getInstance();
+          const { createOrUpdateDoc } = await import('@/lib/sync-service');
           
           let count = 0;
           const stores = ['projects', 'expenses', 'revenue', 'materials', 'labor', 'broker_payments', 'petty_cash'];
           for (const store of stores) {
             if (Array.isArray(data[store])) {
               for (const item of data[store]) {
-                 await db.put(store as any, item);
-                 // Enqueue for sync so it hits supabase
-                 await db.add('syncQueue', {
-                    id: `sync-${Date.now()}-${Math.random().toString(36).substring(7)}`,
-                    action: 'update', // Treat as update to upsert
-                    collection: store,
-                    documentId: item.id,
-                    data: item,
-                    timestamp: Date.now(),
-                    synced: false
-                 });
+                 await createOrUpdateDoc(store, item.id, item, user?.id || 'unknown', true);
                  count++;
               }
             }
           }
-          await engine.pushLocalChanges();
           toast.success(`Restored ${count} records successfully`);
           setTimeout(() => window.location.reload(), 1500);
         } catch (err) {
@@ -288,15 +276,7 @@ export function SettingsTab() {
   };
 
   const handleResetSystem = async () => {
-    const result = await removeInitialAdmin();
-    if (result.success) {
-      toast.success('System reset successfully! Redirecting to login...');
-      setTimeout(() => {
-        window.location.href = '/auth';
-      }, 1500);
-    } else {
-      toast.error(result.error || 'Failed to reset system');
-    }
+    toast.error('System reset is not supported in the cloud version.');
   };
 
 

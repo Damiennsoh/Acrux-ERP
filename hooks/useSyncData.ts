@@ -34,8 +34,16 @@ export function useCollection(
       return data || [];
     },
     {
-      revalidateOnFocus: true,
+      revalidateOnFocus: false,
       revalidateOnReconnect: true,
+      onErrorRetry: (error, key, config, revalidate, { retryCount }) => {
+        // Don't retry on 404 errors (table doesn't exist)
+        if (error.message?.includes('does not exist') || error.code === '42P01') {
+          return;
+        }
+        // Retry up to 3 times for other errors
+        if (retryCount < 3) revalidate({ retryCount });
+      },
     }
   );
 
@@ -73,8 +81,16 @@ export function useDocument(
       return data;
     },
     {
-      revalidateOnFocus: true,
+      revalidateOnFocus: false,
       revalidateOnReconnect: true,
+      onErrorRetry: (error, key, config, revalidate, { retryCount }) => {
+        // Don't retry on 404 errors (table doesn't exist)
+        if (error.message?.includes('does not exist') || error.code === '42P01') {
+          return;
+        }
+        // Retry up to 3 times for other errors
+        if (retryCount < 3) revalidate({ retryCount });
+      },
     }
   );
 
