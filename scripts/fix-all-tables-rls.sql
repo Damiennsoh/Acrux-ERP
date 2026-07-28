@@ -1,52 +1,43 @@
--- Fix RLS Policies for all operational tables
--- This grants full CRUD access (SELECT, INSERT, UPDATE, DELETE) to users
--- for records that match their organization's slug in the JWT app_metadata.
+-- Fix RLS Policies for operational tables (Idempotent script)
+-- This script checks if a table exists before attempting to create policies.
+-- It grants full CRUD access to users for records that match their organization's slug.
 
--- 1. Projects
-DROP POLICY IF EXISTS "Org members full access" ON public.projects;
-CREATE POLICY "Org members full access" ON public.projects
-  FOR ALL TO authenticated
-  USING ("orgId" = (auth.jwt() -> 'app_metadata' ->> 'organizationName')::text)
-  WITH CHECK ("orgId" = (auth.jwt() -> 'app_metadata' ->> 'organizationName')::text);
-
--- 2. Development Tools
-DROP POLICY IF EXISTS "Org members full access" ON public.development_tools;
-CREATE POLICY "Org members full access" ON public.development_tools
-  FOR ALL TO authenticated
-  USING ("orgId" = (auth.jwt() -> 'app_metadata' ->> 'organizationName')::text)
-  WITH CHECK ("orgId" = (auth.jwt() -> 'app_metadata' ->> 'organizationName')::text);
-
--- 3. Broker Payments
-DROP POLICY IF EXISTS "Org members full access" ON public.broker_payments;
-CREATE POLICY "Org members full access" ON public.broker_payments
-  FOR ALL TO authenticated
-  USING ("orgId" = (auth.jwt() -> 'app_metadata' ->> 'organizationName')::text)
-  WITH CHECK ("orgId" = (auth.jwt() -> 'app_metadata' ->> 'organizationName')::text);
-
--- 4. Miscellaneous
-DROP POLICY IF EXISTS "Org members full access" ON public.miscellaneous;
-CREATE POLICY "Org members full access" ON public.miscellaneous
-  FOR ALL TO authenticated
-  USING ("orgId" = (auth.jwt() -> 'app_metadata' ->> 'organizationName')::text)
-  WITH CHECK ("orgId" = (auth.jwt() -> 'app_metadata' ->> 'organizationName')::text);
-
--- 5. Revenue
-DROP POLICY IF EXISTS "Org members full access" ON public.revenue;
-CREATE POLICY "Org members full access" ON public.revenue
-  FOR ALL TO authenticated
-  USING ("orgId" = (auth.jwt() -> 'app_metadata' ->> 'organizationName')::text)
-  WITH CHECK ("orgId" = (auth.jwt() -> 'app_metadata' ->> 'organizationName')::text);
-
--- 6. Audit Logs
-DROP POLICY IF EXISTS "Org members full access" ON public.audit_logs;
-CREATE POLICY "Org members full access" ON public.audit_logs
-  FOR ALL TO authenticated
-  USING ("orgId" = (auth.jwt() -> 'app_metadata' ->> 'organizationName')::text)
-  WITH CHECK ("orgId" = (auth.jwt() -> 'app_metadata' ->> 'organizationName')::text);
-
--- 7. Expenses
-DROP POLICY IF EXISTS "Org members full access" ON public.expenses;
-CREATE POLICY "Org members full access" ON public.expenses
-  FOR ALL TO authenticated
-  USING ("orgId" = (auth.jwt() -> 'app_metadata' ->> 'organizationName')::text)
-  WITH CHECK ("orgId" = (auth.jwt() -> 'app_metadata' ->> 'organizationName')::text);
+DO $$ 
+DECLARE 
+    table_name text;
+    tables_to_check text[] := ARRAY[
+        'projects', 
+        'development_tools', 
+        'broker_payments', 
+        'miscellaneous', 
+        'revenue', 
+        'audit_logs', 
+        'expenses', 
+        'petty_cash',
+        'materials',
+        'development_costs'
+    ];
+BEGIN
+    FOREACH table_name IN ARRAY tables_to_check
+    LOOP
+        -- Check if the table exists in the public schema
+        IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = table_name) THEN
+            
+            -- Drop the old policy if it exists
+            EXECUTE format('DROP POLICY IF EXISTS "Org members full access" ON public.%I', table_name);
+            
+            -- Create the new policy
+            EXECUTE format(
+                'CREATE POLICY "Org members full access" ON public.%I ' ||
+                'FOR ALL TO authenticated ' ||
+                'USING ("orgId" = (auth.jwt() -> ''app_metadata'' ->> ''organizationName'')::text) ' ||
+                'WITH CHECK ("orgId" = (auth.jwt() -> ''app_metadata'' ->> ''organizationName'')::text)', 
+                table_name
+            );
+            
+            RAISE NOTICE 'Applied RLS policy to %', table_name;
+        ELSE
+            RAISE NOTICE 'Table % does not exist yet. Skipping...', table_name;
+        END IF;
+    END LOOP;
+END $$;
