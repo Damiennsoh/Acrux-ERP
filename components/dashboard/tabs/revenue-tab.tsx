@@ -31,15 +31,14 @@ import {
 } from "@/components/ui/accordion";
 
 export function RevenueTab() {
-  const { formatCurrency, currency } = useCurrency();
-  const { data: rawRevenue, isLoading: i1, mutate: m1 } = useCollection('revenue');
-  const { data: projects, isLoading: i2 } = useCollection('projects');
-  const { data: materials, isLoading: i3 } = useCollection('materials');
-  const { data: labor, isLoading: i4 } = useCollection('labor');
-  const { data: brokers, isLoading: i5 } = useCollection('broker_payments');
-  const { data: pettyCash, isLoading: i6 } = useCollection('petty_cash');
-  
   const { user } = useAuth();
+  const { formatCurrency, currency } = useCurrency();
+  const { data: rawRevenue, isLoading: i1, mutate: m1 } = useCollection('revenue', user?.organizationName);
+  const { data: projects, isLoading: i2 } = useCollection('projects', user?.organizationName);
+  const { data: materials, isLoading: i3 } = useCollection('materials', user?.organizationName);
+  const { data: labor, isLoading: i4 } = useCollection('labor', user?.organizationName);
+  const { data: brokers, isLoading: i5 } = useCollection('broker_payments', user?.organizationName);
+  const { data: pettyCash, isLoading: i6 } = useCollection('petty_cash', user?.organizationName);
   const isAdmin = user?.isAdmin;
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');

@@ -25,10 +25,10 @@ import { ImageUploadButton } from '@/components/ui/image-upload-button';
 import { toast } from 'sonner';
 
 export function MiscellaneousTab() {
-  const { formatCurrency, currency } = useCurrency();
-  const { data: miscellaneous, isLoading, mutate } = useCollection('miscellaneous');
-  const { data: projects } = useCollection('projects');
   const { user } = useAuth();
+  const { formatCurrency, currency } = useCurrency();
+  const { data: miscellaneous, isLoading, mutate } = useCollection('miscellaneous', user?.organizationName);
+  const { data: projects } = useCollection('projects', user?.organizationName);
   const isAdmin = user?.isAdmin;
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);

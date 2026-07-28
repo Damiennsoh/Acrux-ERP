@@ -12,7 +12,7 @@ interface FetchOptions {
  * if the network is offline or Supabase is unreachable.
  */
 async function withTimeout<T>(
-  promise: Promise<T>,
+  promise: PromiseLike<T> | Promise<T>,
   ms: number,
   label: string
 ): Promise<T> {
@@ -20,7 +20,7 @@ async function withTimeout<T>(
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new Error(`[${label}] Request timed out after ${ms}ms`)), ms);
   });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+  return Promise.race([Promise.resolve(promise), timeout]).finally(() => clearTimeout(timer));
 }
 
 /**
@@ -51,11 +51,11 @@ export function useSupabaseCollection(
       setError(null);
 
       const query = supabase.from(tableName).select('*');
-      const { data: result, error: fetchError } = await withTimeout(
+      const { data: result, error: fetchError } = (await withTimeout(
         query,
         timeoutMs,
         tableName
-      );
+      )) as any;
 
       if (fetchError) throw fetchError;
       setData(result || []);

@@ -25,10 +25,10 @@ import { ImageUploadButton } from '@/components/ui/image-upload-button';
 import { toast } from 'sonner';
 
 export function PettyCashTab() {
-  const { formatCurrency, currency } = useCurrency();
-  const { data: pettyCash, isLoading, mutate } = useCollection('petty_cash');
-  const { data: projects } = useCollection('projects');
   const { user } = useAuth();
+  const { formatCurrency, currency } = useCurrency();
+  const { data: pettyCash, isLoading, mutate } = useCollection('petty_cash', user?.organizationName);
+  const { data: projects } = useCollection('projects', user?.organizationName);
   const isAdmin = user?.isAdmin;
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);

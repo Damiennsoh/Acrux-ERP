@@ -24,10 +24,10 @@ import { ImageUploadButton } from '@/components/ui/image-upload-button';
 import { toast } from 'sonner';
 
 export function DevelopmentCostsTab() {
-  const { formatCurrency, currency } = useCurrency();
-  const { data: development_costs, isLoading, mutate } = useCollection('development_costs');
-  const { data: projects } = useCollection('projects');
   const { user } = useAuth();
+  const { formatCurrency, currency } = useCurrency();
+  const { data: development_costs, isLoading, mutate } = useCollection('development_costs', user?.organizationName);
+  const { data: projects } = useCollection('projects', user?.organizationName);
   const isAdmin = user?.isAdmin;
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);

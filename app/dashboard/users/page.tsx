@@ -269,7 +269,7 @@ export default function UserManagementPage() {
               </div>
               <div>
                 <p className="font-bold text-xs uppercase tracking-wider" style={{ color: '#065f46' }}>Organization</p>
-                <p className="font-black text-sm sm:text-base" style={{ color: '#064e3b' }}>{currentUser.organizationName}</p>
+                <p className="font-black text-sm sm:text-base" style={{ color: '#064e3b' }}>{currentUser?.organizationName}</p>
               </div>
             </div>
           </div>
@@ -349,7 +349,7 @@ export default function UserManagementPage() {
                 <span className="truncate">Team Directory</span>
               </CardTitle>
               <CardDescription className="text-slate-400 text-xs sm:text-sm mt-1 sm:mt-2 font-medium">
-                Manage {users.length} team members at {currentUser.organizationName}
+                Manage {users.length} team members at {currentUser?.organizationName}
               </CardDescription>
             </div>
             <Button 
@@ -393,12 +393,12 @@ export default function UserManagementPage() {
                         <div className="flex-1 min-w-0">
                           <p className="text-white font-bold text-sm sm:text-lg truncate">{u.name}</p>
                           <p className="text-blue-300 text-xs sm:text-sm font-medium">
-                            {u.id === currentUser.id ? u.staffId : '***'}
+                            {u.id === currentUser?.id ? u.staffId : '***'}
                           </p>
                           {/* Mobile-only department info */}
                           <p className="text-slate-400 text-xs sm:hidden mt-0.5">{u.department || 'General'}</p>
                         </div>
-                        {u.id === currentUser.id && (
+                        {u.id === currentUser?.id && (
                           <Badge className="bg-gradient-to-r from-blue-600/30 to-indigo-600/30 text-blue-200 border border-blue-400/40 font-semibold px-2 sm:px-3 py-0.5 sm:py-1 text-xs flex-shrink-0">
                             You
                           </Badge>
@@ -437,7 +437,7 @@ export default function UserManagementPage() {
                       )}
                     </td>
                     <td className="px-3 sm:px-6 py-3 sm:py-5 text-right">
-                      {u.id !== currentUser.id ? (
+                      {u.id !== currentUser?.id ? (
                         <div className="flex items-center justify-end gap-1 sm:gap-3">
                           <Button
                             variant="outline"

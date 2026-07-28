@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { useCollection } from '@/hooks/useSyncData';
+import { useAuth } from '@/lib/auth-context';
 import { useCurrency } from '@/lib/currency-context';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Spinner } from '@/components/ui/spinner';
@@ -26,14 +27,15 @@ import {
 } from 'recharts';
 
 export function SummaryTab() {
+  const { user } = useAuth();
   const { formatCurrency, currencyConfig, currency } = useCurrency();
   // Fetch all collections
-  const { data: development_tools, isLoading: i1 } = useCollection('development_tools');
-  const { data: development_costs, isLoading: i2 } = useCollection('development_costs');
-  const { data: brokers, isLoading: i3 } = useCollection('broker_payments');
-  const { data: miscellaneous, isLoading: i4 } = useCollection('miscellaneous');
-  const { data: revenue, isLoading: i5 } = useCollection('revenue');
-  const { data: projects, isLoading: i6 } = useCollection('projects');
+  const { data: development_tools, isLoading: i1 } = useCollection('development_tools', user?.organizationName);
+  const { data: development_costs, isLoading: i2 } = useCollection('development_costs', user?.organizationName);
+  const { data: brokers, isLoading: i3 } = useCollection('broker_payments', user?.organizationName);
+  const { data: miscellaneous, isLoading: i4 } = useCollection('miscellaneous', user?.organizationName);
+  const { data: revenue, isLoading: i5 } = useCollection('revenue', user?.organizationName);
+  const { data: projects, isLoading: i6 } = useCollection('projects', user?.organizationName);
 
   const isLoading = i1 || i2 || i3 || i4 || i5 || i6;
   

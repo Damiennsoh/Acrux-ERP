@@ -38,14 +38,14 @@ import { ImageUploadButton } from '@/components/ui/image-upload-button';
 import { toast } from 'sonner';
 
 export function ProjectsTab() {
-  const { formatCurrency } = useCurrency();
-  const { data: projects, isLoading, mutate } = useCollection('projects');
-  const { data: allMaterials } = useCollection('materials');
-  const { data: allLabor } = useCollection('labor');
-  const { data: allRevenue } = useCollection('revenue');
-  const { data: allPettyCash } = useCollection('petty_cash');
-  const { data: allBrokers } = useCollection('broker_payments');
   const { user } = useAuth();
+  const { formatCurrency } = useCurrency();
+  const { data: projects, isLoading, mutate } = useCollection('projects', user?.organizationName);
+  const { data: allMaterials } = useCollection('materials', user?.organizationName);
+  const { data: allLabor } = useCollection('labor', user?.organizationName);
+  const { data: allRevenue } = useCollection('revenue', user?.organizationName);
+  const { data: allPettyCash } = useCollection('petty_cash', user?.organizationName);
+  const { data: allBrokers } = useCollection('broker_payments', user?.organizationName);
   const isAdmin = user?.isAdmin;
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);

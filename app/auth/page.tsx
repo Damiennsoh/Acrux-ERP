@@ -11,6 +11,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from 'sonner';
 import { LogIn, User, Zap, AlertTriangle, Wifi, WifiOff, Building, IdCard, HelpCircle, Key, Eye, EyeOff, Lock as LockIcon } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 
 export default function AuthPage() {
   const router = useRouter();

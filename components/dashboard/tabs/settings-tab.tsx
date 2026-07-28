@@ -5,7 +5,7 @@ import { useTheme } from 'next-themes';
 import { useAuth } from '@/lib/auth-context';
 import { useCurrency, currencies } from '@/lib/currency-context';
 import { getDB } from '@/lib/indexeddb';
-import { HybridSyncEngine } from '@/lib/sync-service';
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,7 +23,7 @@ import { toast } from 'sonner';
 import { Settings, Download, Upload, BarChart3, Lock, Moon, Sun, Database, UserPlus, UserMinus, Shield, Cloud, RefreshCw, CloudOff } from 'lucide-react';
 
 export function SettingsTab() {
-  const { user, getUsers, deleteUser, register, updateUserRole, changePassword, updateUserProfile, removeInitialAdmin, isCloudSyncing, cloudSyncError, triggerSync, isOnline } = useAuth();
+  const { user, getUsers, deleteUser, register, updateUserRole, changePassword, updateUserProfile, isCloudSyncing, cloudSyncError, triggerSync, isOnline } = useAuth();
   const { currency, setCurrency } = useCurrency();
   const isAdmin = user?.isAdmin;
   const { theme, setTheme } = useTheme();
