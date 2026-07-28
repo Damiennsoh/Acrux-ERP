@@ -70,11 +70,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Restore session on mount
   useEffect(() => {
     const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        await loadUserProfile(session.user.id, session.user.user_metadata);
+      try {
+        const sessionPromise = supabase.auth.getSession();
+        const timeoutPromise = new Promise<{data: {session: null}}>((_, reject) => 
+          setTimeout(() => reject(new Error('Auth timeout')), 8000)
+        );
+        const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise]) as any;
+        
+        if (session?.user) {
+          await loadUserProfile(session.user.id, session.user.user_metadata);
+        }
+      } catch (error) {
+        console.error('Auth initialization error:', error);
+      } finally {
+        setIsLoading(false);
       }
-      setIsLoading(false);
     };
     init();
 
@@ -112,12 +122,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const loadUserProfile = async (userId: string, metadata: any) => {
-    // Fetch from Supabase directly
-    const { data: profile } = await supabase
-      .from('user_profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
+    // Fetch from Supabase directly with a timeout
+    let profile = null;
+    try {
+      const fetchPromise = supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+      const timeoutPromise = new Promise<any>((_, reject) => 
+        setTimeout(() => reject(new Error('Profile fetch timeout')), 8000)
+      );
+      
+      const result = await Promise.race([fetchPromise, timeoutPromise]);
+      profile = result?.data;
+    } catch (err) {
+      console.warn('Failed to fetch user profile:', err);
+    }
 
     if (profile) {
       setUser({
