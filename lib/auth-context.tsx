@@ -69,34 +69,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Restore session on mount
   useEffect(() => {
-    const init = async () => {
-      try {
-        const sessionPromise = supabase.auth.getSession();
-        const timeoutPromise = new Promise<{data: {session: null}}>((_, reject) => 
-          setTimeout(() => reject(new Error('Auth timeout')), 8000)
-        );
-        const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise]) as any;
-        
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // Handle the initial session check on app load
+      if (event === 'INITIAL_SESSION') {
         if (session?.user) {
           await loadUserProfile(session.user.id, session.user.user_metadata);
         }
-      } catch (error) {
-        console.error('Auth initialization error:', error);
-      } finally {
         setIsLoading(false);
       }
-    };
-    init();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      // Only update the user state for session-bearing events.
-      // Ignore USER_UPDATED — it can fire during admin.createUser() operations
-      // in some Supabase versions and must not displace the current session.
-      if (event === 'SIGNED_OUT') {
+      // Handle logout
+      else if (event === 'SIGNED_OUT') {
         setUser(null);
-        return;
       }
-      if (session?.user && (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
+      // Handle subsequent logins and token refreshes
+      else if (session?.user && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
         await loadUserProfile(session.user.id, session.user.user_metadata);
       }
     });
@@ -124,17 +110,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loadUserProfile = async (userId: string, metadata: any) => {
     // Fetch from Supabase directly with a timeout
     let profile = null;
+    let timeoutId: NodeJS.Timeout;
     try {
       const fetchPromise = supabase
         .from('user_profiles')
         .select('*')
         .eq('id', userId)
         .single();
-      const timeoutPromise = new Promise<any>((_, reject) => 
-        setTimeout(() => reject(new Error('Profile fetch timeout')), 8000)
-      );
+      const timeoutPromise = new Promise<any>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('Profile fetch timeout')), 8000);
+      });
       
       const result = await Promise.race([fetchPromise, timeoutPromise]);
+      clearTimeout(timeoutId!);
       profile = result?.data;
     } catch (err) {
       console.warn('Failed to fetch user profile:', err);
