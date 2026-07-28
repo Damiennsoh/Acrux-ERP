@@ -2,7 +2,6 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { supabase } from './supabase';
 import { slugifyOrg } from './utils/org';
-import { HybridSyncEngine } from './sync-service';
 
 export interface AuthUser {
   id: string;
