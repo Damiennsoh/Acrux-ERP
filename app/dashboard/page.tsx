@@ -5,7 +5,6 @@ import { useSearchParams } from 'next/navigation';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { SummaryTab } from '@/components/dashboard/tabs/summary-tab';
 import { ProjectsTab } from '@/components/dashboard/tabs/projects-tab';
-import { ExpensesTab } from '@/components/dashboard/tabs/expenses-tab';
 import { RevenueTab } from '@/components/dashboard/tabs/revenue-tab';
 import { SettingsTab } from '@/components/dashboard/tabs/settings-tab';
 import { PWAInstall } from '@/components/pwa-install';
@@ -124,10 +123,6 @@ function DashboardContent() {
           
           <TabsContent value="miscellaneous" className="space-y-4 m-0 border-none p-0 outline-none">
             <MiscellaneousTab />
-          </TabsContent>
-
-          <TabsContent value="expenses" className="space-y-4 m-0 border-none p-0 outline-none">
-            <ExpensesTab />
           </TabsContent>
 
           <TabsContent value="revenue" className="space-y-4 m-0 border-none p-0 outline-none">

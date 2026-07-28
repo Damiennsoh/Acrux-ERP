@@ -176,8 +176,8 @@ CREATE POLICY "View own org profiles"
   TO authenticated
   USING (
     "organizationName" = COALESCE(
-      (auth.jwt() ->> 'organizationName')::text,
-      (auth.jwt() -> 'user_metadata' ->> 'organizationName')::text
+      (auth.jwt() -> 'app_metadata' ->> 'organizationName')::text,
+      LOWER(REGEXP_REPLACE(REGEXP_REPLACE((auth.jwt() -> 'user_metadata' ->> 'organizationName')::text, '[^a-zA-Z0-9]', '-', 'g'), '-+', '-', 'g'))
     )
     OR auth.uid() = id
   );
