@@ -96,7 +96,7 @@ export function MiscellaneousTab() {
     }
 
     try {
-      const docId = editingId || `misc_${Date.now()}`;
+      const docId = editingId || undefined;
       const data = {
         projectId: formData.projectId,
         date: formData.date,

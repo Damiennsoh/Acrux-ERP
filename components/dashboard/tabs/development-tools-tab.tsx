@@ -77,7 +77,7 @@ export function DevelopmentToolsTab() {
     }
 
     try {
-      const docId = editingId || `tool_${Date.now()}`;
+      const docId = editingId || undefined;
       const qty = parseFloat(formData.quantity);
       const cost = parseFloat(formData.unitCost);
       const data = {

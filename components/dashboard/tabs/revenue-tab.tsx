@@ -65,7 +65,7 @@ export function RevenueTab() {
     }
 
     try {
-      const paymentId = editingPaymentId || `pay_${Date.now()}`;
+      const paymentId = editingPaymentId || undefined;
       const data = {
         projectId: formData.projectId,
         description: formData.description,

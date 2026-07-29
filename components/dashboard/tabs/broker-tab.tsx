@@ -81,7 +81,7 @@ export function BrokerTab() {
     }
 
     try {
-      const docId = editingId || `brk_${Date.now()}`;
+      const docId = editingId || undefined;
       const data = {
         projectId: formData.projectId,
         brokerId: formData.brokerId,

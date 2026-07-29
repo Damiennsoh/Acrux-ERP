@@ -157,7 +157,7 @@ export function ProjectsTab() {
     }
 
     try {
-      const docId = editingId || `proj_${Date.now()}`;
+      const docId = editingId || undefined;
       const data = {
         projectId: slugifyProjectId(formData.projectId),
         name: formData.name,

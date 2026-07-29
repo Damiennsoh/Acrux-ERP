@@ -13,7 +13,7 @@ import { slugifyOrg } from './utils/org';
  */
 export async function createOrUpdateDoc(
   collectionName: string,
-  documentId: string,
+  documentId: string | undefined,
   data: any,
   userId: string,
   isUpdate: boolean = false
@@ -25,7 +25,9 @@ export async function createOrUpdateDoc(
 
   const docData = {
     ...data,
-    id: documentId,
+    // Only include id if it exists (for updates). 
+    // For inserts, let Supabase generate it via DEFAULT uuid_generate_v4().
+    ...(documentId ? { id: documentId } : {}),
     ...(orgId ? { orgId } : {}),
     // Normalize projectId to UPPERCASE
     ...(data.projectId ? { projectId: (data.projectId as string).toUpperCase() } : {}),
@@ -34,9 +36,12 @@ export async function createOrUpdateDoc(
       : { createdAt: timestamp, updatedAt: timestamp, createdBy: userId, updatedBy: userId }),
   };
 
+  // If updating, we must specify onConflict. If inserting, Supabase handles it.
+  const upsertOptions = documentId ? { onConflict: 'id' } : {};
+
   const { error } = await supabase
     .from(collectionName)
-    .upsert(docData, { onConflict: 'id' });
+    .upsert(docData, upsertOptions);
 
   if (error) {
     console.error(`[DB] Failed to write to ${collectionName}:`, error.message);
@@ -51,7 +56,7 @@ export async function createOrUpdateDoc(
       userId,
       action: isUpdate ? 'UPDATE' : 'CREATE',
       entityType: collectionName,
-      entityId: documentId,
+      entityId: documentId || 'auto-generated',
       changes: { new: docData },
       timestamp,
     });

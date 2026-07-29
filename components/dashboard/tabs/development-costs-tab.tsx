@@ -80,7 +80,7 @@ export function DevelopmentCostsTab() {
     }
 
     try {
-      const docId = editingId || `dev_${Date.now()}`;
+      const docId = editingId || undefined;
       const data = {
         projectId: formData.projectId,
         developerId: formData.developerId,
