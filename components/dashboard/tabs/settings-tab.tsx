@@ -5,6 +5,7 @@ import { useTheme } from 'next-themes';
 import { useAuth } from '@/lib/auth-context';
 import { useCurrency, currencies } from '@/lib/currency-context';
 import { getDB } from '@/lib/indexeddb';
+import { slugifyOrg } from '@/lib/utils/org';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -208,7 +209,7 @@ export function SettingsTab() {
       newUser.staffId,
       newUser.password,
       newUser.role,
-      user?.organizationName || 'ACRUX IT SOLUTIONS',
+      slugifyOrg(user?.organizationName || 'ACRUX IT SOLUTIONS'),
       newUser.department
     );
 
@@ -733,7 +734,7 @@ export function SettingsTab() {
                   </p>
                   <p className="text-sm">
                     <span className="text-muted-foreground">Organization:</span>{' '}
-                    <span className="font-semibold">{user?.organizationName || '—'}</span>
+                    <span className="font-semibold">{user?.organizationName?.replace(/-/g, ' ').toUpperCase() || '—'}</span>
                   </p>
                 </div>
               </div>
