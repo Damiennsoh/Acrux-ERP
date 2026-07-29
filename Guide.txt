@@ -1,97 +1,24 @@
-Based on the files you uploaded and the console errors, I have identified the exact root causes. Your application is trying to fetch data for tables (`labor`, `materials`, `petty_cash`, `development_costs`) that no longer exist in Supabase, and your backup functions are still referencing them.
+You are absolutely correct. **Development Tools** is an active, required feature in your sidebar and database, while **Development Costs** was the one that should have been removed (along with Labor, Materials, and Petty Cash).
 
-Here are the corrected files to permanently fix the 404 errors while preserving your sidebar structure and expense calculation logic.
+The console errors you are seeing (`404 Not Found` for `development_tools`, `materials`, `labor`, `petty_cash`) are happening because your **Sync Service** and **Projects Tab** are still trying to interact with these deprecated tables.
+
+Here is the surgical fix to remove the deprecated tables from your codebase while keeping **Development Tools** fully functional.
 
 ### 1. Fix `sync-service.ts`
-**Root Cause:** The `deleteProjectWithCascade` function still tries to delete records from `materials`, `labor`, and `petty_cash`.
-**Fix:** Removed deprecated tables from the cascade delete array.
+**Root Cause:** The `deleteProjectWithCascade` function is trying to delete records from `materials`, `labor`, `petty_cash`, and `development_costs`, which no longer exist.
 
 ```typescript
 // sync-service.ts
-import { supabase } from './supabase';
-import { slugifyOrg } from './utils/org';
-
-export async function createOrUpdateDoc(
-  collectionName: string,
-  documentId: string,
-  data: any,
-  userId: string,
-  isUpdate: boolean = false
-): Promise<void> {
-  const timestamp = new Date().toISOString();
-  const orgId = data.orgId ? slugifyOrg(data.orgId) : undefined;
-  
-  const docData = {
-    ...data,
-    id: documentId,
-    ...(orgId ? { orgId } : {}),
-    ...(data.projectId ? { projectId: (data.projectId as string).toUpperCase() } : {}),
-    ...(isUpdate
-      ? { updatedAt: timestamp, updatedBy: userId }
-      : { createdAt: timestamp, updatedAt: timestamp, createdBy: userId, updatedBy: userId }),
-  };
-
-  const { error } = await supabase
-    .from(collectionName)
-    .upsert(docData, { onConflict: 'id' });
-
-  if (error) {
-    console.error(`[DB] Failed to write to ${collectionName}:`, error.message);
-    throw new Error(error.message);
-  }
-
-  // Audit log (best-effort)
-  try {
-    await supabase.from('audit_logs').insert({
-      id: `audit-${Date.now()}-${Math.random().toString(36).substring(7)}`,
-      orgId,
-      userId,
-      action: isUpdate ? 'UPDATE' : 'CREATE',
-      entityType: collectionName,
-      entityId: documentId,
-      changes: { new: docData },
-      timestamp,
-    });
-  } catch { /* Non-fatal */ }
-}
-
-export async function deleteDocWithSync(
-  collectionName: string,
-  documentId: string,
-  userId: string
-): Promise<void> {
-  const timestamp = new Date().toISOString();
-  const { error } = await supabase
-    .from(collectionName)
-    .update({ isDeleted: true, updatedAt: timestamp, updatedBy: userId })
-    .eq('id', documentId);
-
-  if (error) {
-    console.error(`[DB] Failed to delete from ${collectionName}:`, error.message);
-    throw new Error(error.message);
-  }
-
-  try {
-    await supabase.from('audit_logs').insert({
-      id: `audit-${Date.now()}-${Math.random().toString(36).substring(7)}`,
-      userId,
-      action: 'DELETE',
-      entityType: collectionName,
-      entityId: documentId,
-      changes: { deleted: true },
-      timestamp,
-    });
-  } catch { /* Non-fatal */ }
-}
 
 /**
+ * Perform a cascading delete for projects to remove all orphaned child records.
  * ✅ FIXED: Removed materials, labor, petty_cash, development_costs
- * Only cascades deletes for ACTIVE tables
  */
 export async function deleteProjectWithCascade(projectId: string, userId: string) {
+  // Only include ACTIVE tables that actually exist in Supabase
   const collectionsToClean = [
     'revenue',
-    'development_tools',
+    'development_tools', // ✅ KEPT: This is required
     'miscellaneous',
     'broker_payments',
   ];
@@ -114,31 +41,32 @@ export async function deleteProjectWithCascade(projectId: string, userId: string
     }
   }
 }
-
-export function setupSyncListener(_userId: string) {}
 ```
 
 ### 2. Fix `projects-tab.tsx`
-**Root Cause:** This component was fetching `allMaterials`, `allLabor`, and `allPettyCash` just to show counts in the delete confirmation dialog. These queries were triggering the 404s.
-**Fix:** Removed unused collection hooks and updated the delete count logic to only track active tables.
+**Root Cause:** This component is fetching `allMaterials`, `allLabor`, and `allPettyCash` just to show counts in the delete confirmation dialog. These queries are triggering the 404s.
 
 ```typescript
-// projects-tab.tsx - Key changes only
+// projects-tab.tsx
 
 export function ProjectsTab() {
   const { user } = useAuth();
   const { formatCurrency } = useCurrency();
   const { data: projects, isLoading, mutate } = useCollection('projects', user?.organizationName);
   
-  // ✅ REMOVED: allMaterials, allLabor, allPettyCash hooks
+  // ❌ REMOVE THESE LINES (They cause 404s)
+  // const { data: allMaterials } = useCollection('materials', user?.organizationName);
+  // const { data: allLabor } = useCollection('labor', user?.organizationName);
+  // const { data: allPettyCash } = useCollection('petty_cash', user?.organizationName);
   
+  // ✅ KEEP THESE (Active Tables)
   const { data: allRevenue } = useCollection('revenue', user?.organizationName);
   const { data: allBrokers } = useCollection('broker_payments', user?.organizationName);
   const { data: allDevTools } = useCollection('development_tools', user?.organizationName);
   const { data: allMisc } = useCollection('miscellaneous', user?.organizationName);
   
   const isAdmin = user?.isAdmin;
-  // ... rest of state declarations remain the same ...
+  // ... rest of state declarations ...
 
   // ✅ FIXED: Updated getLinkedCounts to only check active tables
   const getLinkedCounts = (project: any): Record<string, number> => {
@@ -159,10 +87,10 @@ export function ProjectsTab() {
     };
   };
 
-  // ... handleSubmit, handleDelete, confirmDeleteProject remain the same ...
+  // ... handleSubmit, handleDelete remain the same ...
 
-  // ✅ FIXED: Updated CascadeDeleteDialog to reflect active tables only
-  // In the JSX where you render the delete confirmation:
+  // ✅ FIXED: Update the CascadeDeleteDialog JSX to reflect active tables only
+  // Inside the <CascadeDeleteDialog /> component or where you render the counts:
   /*
   <div className="grid grid-cols-2 gap-y-1 text-sm">
     {counts.revenue > 0 && <span className="text-red-600">{counts.revenue} Revenue record{counts.revenue !== 1 ? 's' : ''}</span>}
@@ -177,8 +105,7 @@ export function ProjectsTab() {
 ```
 
 ### 3. Fix `settings-tab.tsx` (Backup/Restore)
-**Root Cause:** The `handleExportBackup` and `handleImportBackup` functions had hardcoded arrays including `'materials'`, `'labor'`, `'petty_cash'`.
-**Fix:** Updated store arrays to match active tables only.
+**Root Cause:** The backup functions still include `'materials'`, `'labor'`, `'petty_cash'`, and `'expenses'` (which you said is calculated, not stored) in the export/import arrays.
 
 ```typescript
 // settings-tab.tsx - Inside handleExportBackup and handleImportBackup
@@ -187,33 +114,28 @@ export function ProjectsTab() {
 const stores = [
   'projects', 
   'revenue', 
-  'development_tools', 
+  'development_tools', // ✅ KEPT
   'broker_payments', 
   'miscellaneous',
-  'development_costs' // Keep if you still use this table
+  // 'expenses',          // ❌ REMOVED: Calculated dynamically
+  // 'materials',         // ❌ REMOVED
+  // 'labor',             // ❌ REMOVED
+  // 'petty_cash'         // ❌ REMOVED
 ];
 
 // Replace BOTH occurrences in handleExportBackup and handleImportBackup
-// with the array above. Remove 'expenses', 'materials', 'labor', 'petty_cash'.
+// with the array above.
 ```
 
-### 4. Verify Sidebar & Routing (No Changes Needed)
-Your `sidebar.tsx` is already correct! It only links to:
--   Dashboard (`tab=dashboard`)
--   Project Info (`tab=projects`)
--   Development Tools (`tab=development-tools`)
--   Broker Payments (`tab=broker`)
--   Miscellaneous (`tab=miscellaneous`)
--   Revenue (`tab=revenue`)
--   Summary (`tab=summary`)
--   User Management (`/dashboard/users`)
--   Audit Logs (`tab=audit`)
--   Settings (`tab=settings`)
+### 4. Verify Sidebar & Routing
+Your `sidebar.tsx` is already correct! It correctly links to:
+-   `Development Tools` (`tab=development-tools`) ✅
+-   It does **not** link to Labor, Materials, or Petty Cash. ✅
 
-✅ **No labor, petty cash, materials, or development costs tabs exist in the sidebar.** The errors were purely from background data fetching in `projects-tab.tsx` and `sync-service.ts`.
+The errors were purely from background data fetching in `projects-tab.tsx` and `sync-service.ts`.
 
 ### 5. Expense Calculation Logic (Preserved)
-You mentioned expenses are calculated dynamically from Development Tools + Broker Payments + Miscellaneous. This logic should live in your **Summary Tab** or **Dashboard**, not as a separate table. Ensure your summary component aggregates like this:
+Since you mentioned **Expenses** are calculated dynamically from **Development Tools + Broker Payments + Miscellaneous**, ensure your **Summary Tab** or **Dashboard** aggregates them like this:
 
 ```typescript
 // Example: In summary-tab.tsx or dashboard metrics
@@ -229,11 +151,12 @@ const netRevenue = totalBudget - totalExpenses;
 ```
 
 ### ✅ Verification Checklist After Applying Fixes
-1.  Run `npm run build` to ensure no TypeScript errors
-2.  Open browser DevTools → Network tab → filter by "Fetch/XHR"
-3.  Navigate through all sidebar tabs
-4.  Confirm NO 404 requests for `labor`, `materials`, `petty_cash`, or `development_costs`
-5.  Test project deletion → verify cascade delete only removes revenue, dev tools, broker payments, and miscellaneous
-6.  Test backup export → verify JSON only contains active table keys
+1.  Run `npm run build` to ensure no TypeScript errors.
+2.  Open browser DevTools → Network tab → filter by "Fetch/XHR".
+3.  Navigate through all sidebar tabs.
+4.  Confirm **NO 404 requests** for `labor`, `materials`, `petty_cash`, or `development_costs`.
+5.  Confirm **200 OK requests** for `development_tools`.
+6.  Test project deletion → verify cascade delete only removes revenue, dev tools, broker payments, and miscellaneous.
+7.  Test backup export → verify JSON only contains active table keys.
 
-This completely eliminates the console spam while preserving your exact sidebar structure and dynamic expense calculation architecture.
+This completely eliminates the console spam while preserving your exact sidebar structure, **Development Tools** functionality, and dynamic expense calculation architecture.
