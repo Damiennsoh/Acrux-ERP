@@ -103,11 +103,8 @@ export async function deleteProjectWithCascade(projectId: string, userId: string
   const collectionsToClean = [
     'revenue',
     'development_tools',
-    'development_costs',
     'miscellaneous',
     'broker_payments',
-    'materials',
-    'petty_cash',
   ];
 
   // Delete the project itself

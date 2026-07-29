@@ -141,7 +141,14 @@ export function SettingsTab() {
     try {
       const db = await getDB();
       const backup: any = {};
-      const stores = ['projects', 'expenses', 'revenue', 'materials', 'labor', 'broker_payments', 'petty_cash'];
+      const stores = [
+        'projects', 
+        'revenue', 
+        'development_tools', 
+        'broker_payments', 
+        'miscellaneous',
+        'development_costs'
+      ];
       for (const store of stores) {
         backup[store] = await db.getAll(store as any);
       }
@@ -177,7 +184,14 @@ export function SettingsTab() {
           const { createOrUpdateDoc } = await import('@/lib/sync-service');
           
           let count = 0;
-          const stores = ['projects', 'expenses', 'revenue', 'materials', 'labor', 'broker_payments', 'petty_cash'];
+          const stores = [
+            'projects', 
+            'revenue', 
+            'development_tools', 
+            'broker_payments', 
+            'miscellaneous',
+            'development_costs'
+          ];
           for (const store of stores) {
             if (Array.isArray(data[store])) {
               for (const item of data[store]) {

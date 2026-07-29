@@ -1,161 +1,239 @@
-To ensure your application never mixes uppercase and lowercase organization names, causing users to "disappear" from the User Management page, you must enforce **strict slugification at the source**.
+Based on the files you uploaded and the console errors, I have identified the exact root causes. Your application is trying to fetch data for tables (`labor`, `materials`, `petty_cash`, `development_costs`) that no longer exist in Supabase, and your backup functions are still referencing them.
 
-The root cause of your issue is that `organizationName` is being stored inconsistently: sometimes as `"ACRUX IT SOLUTIONS"` (raw input) and sometimes as `"acrux-it-solutions"` (slugified). When Supabase queries for one format but the data is in the other, it returns 0 results.
+Here are the corrected files to permanently fix the 404 errors while preserving your sidebar structure and expense calculation logic.
 
-Here is the definitive fix to make organization handling uniform across your entire app.
-
-### 1. Enforce Uniformity in `auth-context.tsx`
-Your `getUsers`, `login`, and `register` functions must **always** use the slugified version when querying or storing data. Never pass raw organization strings to Supabase.
+### 1. Fix `sync-service.ts`
+**Root Cause:** The `deleteProjectWithCascade` function still tries to delete records from `materials`, `labor`, and `petty_cash`.
+**Fix:** Removed deprecated tables from the cascade delete array.
 
 ```typescript
-// In auth-context.tsx, update these critical functions:
+// sync-service.ts
+import { supabase } from './supabase';
+import { slugifyOrg } from './utils/org';
 
-const getUsers = async () => {
-  if (!user) return [];
+export async function createOrUpdateDoc(
+  collectionName: string,
+  documentId: string,
+  data: any,
+  userId: string,
+  isUpdate: boolean = false
+): Promise<void> {
+  const timestamp = new Date().toISOString();
+  const orgId = data.orgId ? slugifyOrg(data.orgId) : undefined;
   
-  // ALWAYS use slugified org for queries
-  const orgSlug = slugifyOrg(user.organizationName);
-  
-  const { data, error } = await supabase
-    .from('user_profiles')
-    .select('*')
-    .eq('organizationName', orgSlug); // ← Critical: Query by slug
-  
+  const docData = {
+    ...data,
+    id: documentId,
+    ...(orgId ? { orgId } : {}),
+    ...(data.projectId ? { projectId: (data.projectId as string).toUpperCase() } : {}),
+    ...(isUpdate
+      ? { updatedAt: timestamp, updatedBy: userId }
+      : { createdAt: timestamp, updatedAt: timestamp, createdBy: userId, updatedBy: userId }),
+  };
+
+  const { error } = await supabase
+    .from(collectionName)
+    .upsert(docData, { onConflict: 'id' });
+
   if (error) {
-    console.error('Failed to fetch users:', error);
-    return [];
+    console.error(`[DB] Failed to write to ${collectionName}:`, error.message);
+    throw new Error(error.message);
   }
-  
-  return data.map(p => ({
-    id: p.id,
-    staffId: p.staffId,
-    name: p.name,
-    role: p.role,
-    isAdmin: p.isAdmin,
-    organizationName: p.organizationName, // Store as-is from DB (should be slug)
-    department: p.department,
-  }));
-};
 
-const login = async (staffId: string, password: string, org: string) => {
+  // Audit log (best-effort)
   try {
-    const email = getDummyEmail(staffId);
-    const orgSlug = slugifyOrg(org); // ← Normalize input immediately
-    
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error || !data.session) {
-      return { success: false, error: error?.message || 'Invalid credentials' };
-    }
-    
-    const meta = data.user.user_metadata || {};
-    
-    // Verify organization matches using SLUG comparison
-    if (slugifyOrg(meta.organizationName) !== orgSlug) {
-      await supabase.auth.signOut();
-      return { success: false, error: 'Organization mismatch' };
-    }
-    
-    // ... rest of login logic remains the same
-  } catch (err: any) {
-    return { success: false, error: err.message };
-  }
-};
-
-const register = async (name: string, staffId: string, password: string, role: string, org: string, dept: string) => {
-  try {
-    const email = getDummyEmail(staffId);
-    const orgSlug = slugifyOrg(org); // ← Always store as slug
-    
-    // Check for existing user using SLUG
-    const { data: existingUser } = await supabase
-      .from('user_profiles')
-      .select('id')
-      .eq('staffId', staffId)
-      .eq('organizationName', orgSlug) // ← Query by slug
-      .maybeSingle();
-      
-    if (existingUser) {
-      return { success: false, error: 'User with this Staff ID already exists.' };
-    }
-    
-    // ... rest of registration logic uses orgSlug everywhere
-  } catch (err: any) {
-    return { success: false, error: err.message };
-  }
-};
-```
-
-### 2. Fix System Setup in `page.tsx`
-When creating the initial Superadmin, **force the organization name to be slugified** before sending it to the API. This ensures the first record sets the correct standard.
-
-```typescript
-// In page.tsx, update handleInitializeAdmin:
-
-const handleInitializeAdmin = async () => {
-  setLoading(true);
-  try {
-    const orgName = 'ACRUX IT SOLUTIONS';
-    const orgSlug = slugifyOrg(orgName); // ← Force slugification
-    
-    const response = await fetch('/api/create-admin', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        staffId: 'ACRUX-ADMIN-01',
-        password: 'Admin@1234',
-        name: 'System Administrator',
-        role: 'superadmin',
-        organizationName: orgSlug, // ← Send SLUG, not raw name
-        department: 'Management'
-      })
+    await supabase.from('audit_logs').insert({
+      id: `audit-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+      orgId,
+      userId,
+      action: isUpdate ? 'UPDATE' : 'CREATE',
+      entityType: collectionName,
+      entityId: documentId,
+      changes: { new: docData },
+      timestamp,
     });
-    
-    // ... rest of initialization logic
-  } catch (error: any) {
-    toast.error(error.message || 'Initialization failed');
-  } finally {
-    setLoading(false);
+  } catch { /* Non-fatal */ }
+}
+
+export async function deleteDocWithSync(
+  collectionName: string,
+  documentId: string,
+  userId: string
+): Promise<void> {
+  const timestamp = new Date().toISOString();
+  const { error } = await supabase
+    .from(collectionName)
+    .update({ isDeleted: true, updatedAt: timestamp, updatedBy: userId })
+    .eq('id', documentId);
+
+  if (error) {
+    console.error(`[DB] Failed to delete from ${collectionName}:`, error.message);
+    throw new Error(error.message);
   }
-};
+
+  try {
+    await supabase.from('audit_logs').insert({
+      id: `audit-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+      userId,
+      action: 'DELETE',
+      entityType: collectionName,
+      entityId: documentId,
+      changes: { deleted: true },
+      timestamp,
+    });
+  } catch { /* Non-fatal */ }
+}
+
+/**
+ * ✅ FIXED: Removed materials, labor, petty_cash, development_costs
+ * Only cascades deletes for ACTIVE tables
+ */
+export async function deleteProjectWithCascade(projectId: string, userId: string) {
+  const collectionsToClean = [
+    'revenue',
+    'development_tools',
+    'miscellaneous',
+    'broker_payments',
+  ];
+
+  // Delete the project itself
+  await deleteDocWithSync('projects', projectId, userId);
+
+  // Delete all child records linked to this project
+  for (const collection of collectionsToClean) {
+    const { data: records } = await supabase
+      .from(collection)
+      .select('id')
+      .eq('projectId', projectId.toUpperCase())
+      .eq('isDeleted', false);
+
+    if (records && records.length > 0) {
+      for (const record of records) {
+        await deleteDocWithSync(collection, record.id, userId);
+      }
+    }
+  }
+}
+
+export function setupSyncListener(_userId: string) {}
 ```
 
-### 3. Update `settings-tab.tsx` Display Logic
-While the database should store slugs, you can still display the human-readable name in the UI by reversing the slug when needed. However, **never use the reversed name for filtering or queries**.
+### 2. Fix `projects-tab.tsx`
+**Root Cause:** This component was fetching `allMaterials`, `allLabor`, and `allPettyCash` just to show counts in the delete confirmation dialog. These queries were triggering the 404s.
+**Fix:** Removed unused collection hooks and updated the delete count logic to only track active tables.
 
 ```typescript
-// In settings-tab.tsx, when displaying organization name:
-<div className="font-black text-sm sm:text-base">
-  {/* Display human-readable version */}
-  {user?.organizationName?.replace(/-/g, ' ').toUpperCase() || 'Unknown Org'}
-</div>
+// projects-tab.tsx - Key changes only
 
-// But when passing to any function, ALWAYS use the raw stored value (which should be slug):
-await someFunction(user.organizationName); // ← Pass slug, let function handle display
+export function ProjectsTab() {
+  const { user } = useAuth();
+  const { formatCurrency } = useCurrency();
+  const { data: projects, isLoading, mutate } = useCollection('projects', user?.organizationName);
+  
+  // ✅ REMOVED: allMaterials, allLabor, allPettyCash hooks
+  
+  const { data: allRevenue } = useCollection('revenue', user?.organizationName);
+  const { data: allBrokers } = useCollection('broker_payments', user?.organizationName);
+  const { data: allDevTools } = useCollection('development_tools', user?.organizationName);
+  const { data: allMisc } = useCollection('miscellaneous', user?.organizationName);
+  
+  const isAdmin = user?.isAdmin;
+  // ... rest of state declarations remain the same ...
+
+  // ✅ FIXED: Updated getLinkedCounts to only check active tables
+  const getLinkedCounts = (project: any): Record<string, number> => {
+    if (!project) return { revenue: 0, brokers: 0, devTools: 0, misc: 0 };
+    
+    const pId = slugifyProjectId(project.id || '');
+    const slug = slugifyProjectId(project.projectId || '');
+    const match = (item: any) => {
+      const v = slugifyProjectId(item.projectId || '');
+      return v === pId || v === slug;
+    };
+    
+    return {
+      revenue: (allRevenue || []).filter(match).length,
+      brokers: (allBrokers || []).filter(match).length,
+      devTools: (allDevTools || []).filter(match).length,
+      misc: (allMisc || []).filter(match).length,
+    };
+  };
+
+  // ... handleSubmit, handleDelete, confirmDeleteProject remain the same ...
+
+  // ✅ FIXED: Updated CascadeDeleteDialog to reflect active tables only
+  // In the JSX where you render the delete confirmation:
+  /*
+  <div className="grid grid-cols-2 gap-y-1 text-sm">
+    {counts.revenue > 0 && <span className="text-red-600">{counts.revenue} Revenue record{counts.revenue !== 1 ? 's' : ''}</span>}
+    {counts.brokers > 0 && <span className="text-red-600">{counts.brokers} Broker Payment{counts.brokers !== 1 ? 's' : ''}</span>}
+    {counts.devTools > 0 && <span className="text-red-600">{counts.devTools} Dev Tool{counts.devTools !== 1 ? 's' : ''}</span>}
+    {counts.misc > 0 && <span className="text-red-600">{counts.misc} Misc record{counts.misc !== 1 ? 's' : ''}</span>}
+  </div>
+  */
+  
+  // ... rest of component remains the same ...
+}
 ```
 
-### 4. Database-Level Enforcement (SQL)
-Add a check constraint to prevent non-slugified values from ever entering the database:
+### 3. Fix `settings-tab.tsx` (Backup/Restore)
+**Root Cause:** The `handleExportBackup` and `handleImportBackup` functions had hardcoded arrays including `'materials'`, `'labor'`, `'petty_cash'`.
+**Fix:** Updated store arrays to match active tables only.
 
-```sql
--- Run in Supabase SQL Editor
-ALTER TABLE public.user_profiles 
-  DROP CONSTRAINT IF EXISTS user_profiles_org_format_check;
+```typescript
+// settings-tab.tsx - Inside handleExportBackup and handleImportBackup
 
-ALTER TABLE public.user_profiles 
-  ADD CONSTRAINT user_profiles_org_format_check 
-  CHECK ("organizationName" ~ '^[a-z0-9-]+$');
+// ✅ FIXED: Active stores only
+const stores = [
+  'projects', 
+  'revenue', 
+  'development_tools', 
+  'broker_payments', 
+  'miscellaneous',
+  'development_costs' // Keep if you still use this table
+];
+
+// Replace BOTH occurrences in handleExportBackup and handleImportBackup
+// with the array above. Remove 'expenses', 'materials', 'labor', 'petty_cash'.
 ```
 
-This regex ensures only lowercase letters, numbers, and hyphens are allowed — exactly what `slugifyOrg()` produces.
+### 4. Verify Sidebar & Routing (No Changes Needed)
+Your `sidebar.tsx` is already correct! It only links to:
+-   Dashboard (`tab=dashboard`)
+-   Project Info (`tab=projects`)
+-   Development Tools (`tab=development-tools`)
+-   Broker Payments (`tab=broker`)
+-   Miscellaneous (`tab=miscellaneous`)
+-   Revenue (`tab=revenue`)
+-   Summary (`tab=summary`)
+-   User Management (`/dashboard/users`)
+-   Audit Logs (`tab=audit`)
+-   Settings (`tab=settings`)
 
-### ✅ Verification Checklist
+✅ **No labor, petty cash, materials, or development costs tabs exist in the sidebar.** The errors were purely from background data fetching in `projects-tab.tsx` and `sync-service.ts`.
 
-| Test | Expected Result |
-| :--- | :--- |
-| Create Superadmin via System Setup | `organizationName` = `'acrux-it-solutions'` in DB |
-| Login with "ACRUX IT SOLUTIONS" | Matches `'acrux-it-solutions'` via slug comparison |
-| Add new user under "Acrux It Solutions" | Stored as `'acrux-it-solutions'` |
-| User Management page loads | Shows all users (query uses slug) |
-| Try inserting "ACRUX_IT_SOLUTIONS" directly | Fails with check constraint violation |
+### 5. Expense Calculation Logic (Preserved)
+You mentioned expenses are calculated dynamically from Development Tools + Broker Payments + Miscellaneous. This logic should live in your **Summary Tab** or **Dashboard**, not as a separate table. Ensure your summary component aggregates like this:
 
-By enforcing slugification at every entry point (registration, login, setup) and adding a database constraint, you eliminate the possibility of case mismatches permanently. The User Management page will always find users because both the query and the stored data use the exact same normalized format.
+```typescript
+// Example: In summary-tab.tsx or dashboard metrics
+const totalExpenses = useMemo(() => {
+  const devToolsTotal = (developmentTools || []).reduce((sum, item) => sum + (Number(item.totalCost) || 0), 0);
+  const brokerTotal = (brokerPayments || []).reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+  const miscTotal = (miscellaneous || []).reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+  
+  return devToolsTotal + brokerTotal + miscTotal;
+}, [developmentTools, brokerPayments, miscellaneous]);
+
+const netRevenue = totalBudget - totalExpenses;
+```
+
+### ✅ Verification Checklist After Applying Fixes
+1.  Run `npm run build` to ensure no TypeScript errors
+2.  Open browser DevTools → Network tab → filter by "Fetch/XHR"
+3.  Navigate through all sidebar tabs
+4.  Confirm NO 404 requests for `labor`, `materials`, `petty_cash`, or `development_costs`
+5.  Test project deletion → verify cascade delete only removes revenue, dev tools, broker payments, and miscellaneous
+6.  Test backup export → verify JSON only contains active table keys
+
+This completely eliminates the console spam while preserving your exact sidebar structure and dynamic expense calculation architecture.

@@ -41,11 +41,12 @@ export function ProjectsTab() {
   const { user } = useAuth();
   const { formatCurrency } = useCurrency();
   const { data: projects, isLoading, mutate } = useCollection('projects', user?.organizationName);
-  const { data: allMaterials } = useCollection('materials', user?.organizationName);
-  const { data: allLabor } = useCollection('labor', user?.organizationName);
+  
   const { data: allRevenue } = useCollection('revenue', user?.organizationName);
-  const { data: allPettyCash } = useCollection('petty_cash', user?.organizationName);
   const { data: allBrokers } = useCollection('broker_payments', user?.organizationName);
+  const { data: allDevTools } = useCollection('development_tools', user?.organizationName);
+  const { data: allMisc } = useCollection('miscellaneous', user?.organizationName);
+  
   const isAdmin = user?.isAdmin;
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -203,19 +204,20 @@ export function ProjectsTab() {
 
   // Count linked records for the delete confirmation dialog
   const getLinkedCounts = (project: any): Record<string, number> => {
-    if (!project) return { materials: 0, labor: 0, revenue: 0, pettyCash: 0, brokers: 0 };
+    if (!project) return { revenue: 0, brokers: 0, devTools: 0, misc: 0 };
+    
     const pId = slugifyProjectId(project.id || '');
     const slug = slugifyProjectId(project.projectId || '');
     const match = (item: any) => {
       const v = slugifyProjectId(item.projectId || '');
       return v === pId || v === slug;
     };
+    
     return {
-      materials: (allMaterials || []).filter(match).length,
-      labor: (allLabor || []).filter(match).length,
       revenue: (allRevenue || []).filter(match).length,
-      pettyCash: (allPettyCash || []).filter(match).length,
       brokers: (allBrokers || []).filter(match).length,
+      devTools: (allDevTools || []).filter(match).length,
+      misc: (allMisc || []).filter(match).length,
     };
   };
 
@@ -535,11 +537,10 @@ function CascadeDeleteDialog({
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 space-y-2">
               <p className="text-xs font-bold text-red-700 dark:text-red-300 uppercase tracking-wide">Records that will be deleted:</p>
               <div className="grid grid-cols-2 gap-y-1 text-sm">
-                {counts.materials > 0 && <span className="text-red-600">{counts.materials} Material record{counts.materials !== 1 ? 's' : ''}</span>}
-                {counts.labor > 0 && <span className="text-red-600">{counts.labor} Labor record{counts.labor !== 1 ? 's' : ''}</span>}
-                {counts.revenue > 0 && <span className="text-red-600">{counts.revenue} Payment record{counts.revenue !== 1 ? 's' : ''}</span>}
-                {counts.pettyCash > 0 && <span className="text-red-600">{counts.pettyCash} Petty Cash record{counts.pettyCash !== 1 ? 's' : ''}</span>}
+                {counts.revenue > 0 && <span className="text-red-600">{counts.revenue} Revenue record{counts.revenue !== 1 ? 's' : ''}</span>}
                 {counts.brokers > 0 && <span className="text-red-600">{counts.brokers} Broker Payment{counts.brokers !== 1 ? 's' : ''}</span>}
+                {counts.devTools > 0 && <span className="text-red-600">{counts.devTools} Dev Tool{counts.devTools !== 1 ? 's' : ''}</span>}
+                {counts.misc > 0 && <span className="text-red-600">{counts.misc} Misc record{counts.misc !== 1 ? 's' : ''}</span>}
               </div>
               <p className="text-xs text-red-500 font-medium pt-1">
                 Total: {totalLinked} linked record{totalLinked !== 1 ? 's' : ''} will also be removed.
