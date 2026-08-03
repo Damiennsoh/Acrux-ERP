@@ -47,7 +47,7 @@ export function RevenueTab() {
     projectId: '',
     paymentDate: toISODate(null),
     amountReceived: '',
-    currency: 'LRD',
+    currency: 'USD',
     description: 'Project installment',
     receiptUrl: '',
   });
@@ -67,7 +67,7 @@ export function RevenueTab() {
     try {
       const paymentId = editingPaymentId || undefined;
       const data = {
-        projectId: formData.projectId,
+        projectId: (formData.projectId || '').toUpperCase(),
         description: formData.description,
         amount: parseFloat(formData.amountReceived),
         currency: formData.currency,
@@ -84,7 +84,7 @@ export function RevenueTab() {
          projectId: '',
          paymentDate: toISODate(null),
          amountReceived: '',
-         currency: 'LRD',
+         currency: 'USD',
          description: 'Project installment',
          receiptUrl: '',
       });
@@ -99,7 +99,7 @@ export function RevenueTab() {
     setFormData({
       projectId: pay.projectId,
       amountReceived: pay.amount.toString(),
-      currency: pay.currency || 'LRD',
+        currency: pay.currency || 'USD',
       paymentDate: toISODate(pay.date),
       receiptUrl: pay.receiptUrl || '',
       description: pay.description || '',

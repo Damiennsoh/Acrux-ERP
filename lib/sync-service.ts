@@ -44,8 +44,14 @@ export async function createOrUpdateDoc(
     .upsert(docData, upsertOptions);
 
   if (error) {
-    console.error(`[DB] Failed to write to ${collectionName}:`, error.message);
-    throw new Error(error.message);
+    console.error(`[DB] Failed to write to ${collectionName}:`, {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+      docData: JSON.stringify(docData).substring(0, 200)
+    });
+    throw new Error(`Failed to write to ${collectionName}: ${error.message}`);
   }
 
   // Log to audit_logs (best-effort, don't block on failure)
@@ -81,8 +87,14 @@ export async function deleteDocWithSync(
     .eq('id', documentId);
 
   if (error) {
-    console.error(`[DB] Failed to delete from ${collectionName}:`, error.message);
-    throw new Error(error.message);
+    console.error(`[DB] Failed to delete from ${collectionName}:`, {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+      documentId: documentId.substring(0, 20)
+    });
+    throw new Error(`Failed to delete from ${collectionName}: ${error.message}`);
   }
 
   // Log to audit_logs (best-effort)

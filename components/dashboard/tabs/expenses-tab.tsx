@@ -54,7 +54,7 @@ export function ExpensesTab() {
         category: expense.category,
         description: expense.description,
         amount: expense.amount.toString(),
-        currency: expense.currency || 'LRD',
+        currency: expense.currency || 'USD',
         vendor: expense.vendor || '',
         date: new Date(expense.date).toISOString().split('T')[0],
         status: expense.status,
@@ -134,7 +134,7 @@ export function ExpensesTab() {
   const calculateTotals = () => {
     const totals: Record<string, number> = {};
     filtered.forEach((e: any) => {
-      const curr = e.currency || 'LRD';
+      const curr = e.currency || 'USD';
       totals[curr] = (totals[curr] || 0) + (Number(e.amount) || 0);
     });
     return totals;

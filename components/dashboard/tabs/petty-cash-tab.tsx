@@ -44,7 +44,7 @@ export function PettyCashTab() {
     description: '',
     category: 'Travel',
     amount: '',
-    currency: 'LRD',
+    currency: 'USD',
     receiptUrl: '',
   });
 
@@ -57,7 +57,7 @@ export function PettyCashTab() {
         description: item.description,
         category: item.category || 'Travel',
         amount: item.amount.toString(),
-        currency: item.currency || 'LRD',
+        currency: item.currency || 'USD',
         receiptUrl: item.receiptUrl || '',
       });
       const defaultCats = ['Travel', 'Meals', 'Office Supplies', 'Misc'];
@@ -78,7 +78,7 @@ export function PettyCashTab() {
         description: '',
         category: 'Travel',
         amount: '',
-        currency: 'LRD',
+        currency: 'USD',
         receiptUrl: '',
       });
     }
@@ -98,8 +98,8 @@ export function PettyCashTab() {
     try {
       const docId = editingId || `pty_${Date.now()}`;
       const data = {
-        projectId: formData.projectId,
-        date: formData.date,
+        projectId: (formData.projectId || '').toUpperCase(),
+        date: new Date(formData.date).getTime(),
         description: formData.description,
         category: isCustomCategory ? customCategory : formData.category,
         amount: parseFloat(formData.amount),
@@ -140,7 +140,7 @@ export function PettyCashTab() {
   const calculateTotals = () => {
     const totals: Record<string, number> = {};
     filtered.forEach((p: any) => {
-      const curr = p.currency || 'LRD';
+      const curr = p.currency || 'USD';
       totals[curr] = (totals[curr] || 0) + (Number(p.amount) || 0);
     });
     return totals;

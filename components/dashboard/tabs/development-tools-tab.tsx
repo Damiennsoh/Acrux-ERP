@@ -96,7 +96,9 @@ export function DevelopmentToolsTab() {
       setOpen(false);
       toast.success(editingId ? 'Development tool updated' : 'Development tool added');
     } catch (error) {
-      toast.error('Failed to save development tool');
+      console.error('[DevelopmentToolsTab] Save error:', error);
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      toast.error(`Failed to save development tool: ${errorMsg}`);
     }
   };
 

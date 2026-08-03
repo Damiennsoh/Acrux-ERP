@@ -28,7 +28,12 @@ export function useCollection(
         .order('createdAt', { ascending: false });
 
       if (error) {
-        console.error(`[DB] Failed to fetch ${collectionName}:`, error.message);
+        console.error(`[Fetch] Failed to fetch ${collectionName}:`, {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          orgId: sluggedOrg
+        });
         throw error;
       }
       return data || [];

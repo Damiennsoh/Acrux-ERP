@@ -40,7 +40,7 @@ export function MaterialsTab() {
     quantity: '1',
     unitCost: '0.00',
     receiptUrl: '',
-    currency: 'LRD',
+    currency: 'USD',
   });
 
   const handleOpen = (item?: any) => {
@@ -52,7 +52,7 @@ export function MaterialsTab() {
         quantity: item.quantity.toString(),
         unitCost: item.unitCost.toString(),
         receiptUrl: item.receiptUrl || '',
-        currency: item.currency || 'LRD',
+        currency: item.currency || 'USD',
       });
     } else {
       setEditingId(null);
@@ -81,7 +81,7 @@ export function MaterialsTab() {
       const qty = parseFloat(formData.quantity);
       const cost = parseFloat(formData.unitCost);
       const data = {
-        projectId: formData.projectId,
+        projectId: (formData.projectId || '').toUpperCase(),
         itemName: formData.itemName,
         quantity: qty,
         unitCost: cost,
@@ -121,7 +121,7 @@ export function MaterialsTab() {
   const calculateTotals = () => {
     const totals: Record<string, number> = {};
     filtered.forEach((m: any) => {
-      const curr = m.currency || 'LRD';
+      const curr = m.currency || 'USD';
       totals[curr] = (totals[curr] || 0) + (Number(m.totalCost) || 0);
     });
     return totals;

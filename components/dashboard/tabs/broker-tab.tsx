@@ -40,7 +40,7 @@ export function BrokerTab() {
     brokerId: '',
     brokerName: '',
     amount: '',
-    currency: 'LRD',
+    currency: 'USD',
     paymentDate: new Date().toISOString().split('T')[0],
     receiptUrl: '',
   });
@@ -53,7 +53,7 @@ export function BrokerTab() {
         brokerId: item.brokerId || '',
         brokerName: item.brokerName,
         amount: item.amount.toString(),
-        currency: item.currency || 'LRD',
+        currency: item.currency || 'USD',
         paymentDate: item.paymentDate || new Date().toISOString().split('T')[0],
         receiptUrl: item.receiptUrl || '',
       });
@@ -64,7 +64,7 @@ export function BrokerTab() {
         brokerId: '',
         brokerName: '',
         amount: '',
-        currency: 'LRD',
+        currency: 'USD',
         paymentDate: toISODate(null),
         receiptUrl: '',
       });
@@ -83,7 +83,7 @@ export function BrokerTab() {
     try {
       const docId = editingId || undefined;
       const data = {
-        projectId: formData.projectId,
+        projectId: (formData.projectId || '').toUpperCase(),
         brokerId: formData.brokerId,
         brokerName: formData.brokerName,
         amount: parseFloat(formData.amount),
@@ -124,7 +124,7 @@ export function BrokerTab() {
   const calculateTotals = () => {
     const totals: Record<string, number> = {};
     filtered.forEach((b: any) => {
-      const curr = b.currency || 'LRD';
+      const curr = b.currency || 'USD';
       totals[curr] = (totals[curr] || 0) + (Number(b.amount) || 0);
     });
     return totals;
